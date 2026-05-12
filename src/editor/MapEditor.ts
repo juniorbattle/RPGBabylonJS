@@ -772,7 +772,7 @@ export class MapEditor {
             this.layerPreviewRoot,
             mapW,
             mapD,
-            this.currentGridElevation
+            0
         );
         this.layerManager.buildLayers(
             this.currentBiome,
@@ -1254,7 +1254,7 @@ export class MapEditor {
                 </div>
             </div>
             <div class="sec">
-                <div class="sec-t">Élévation sol (Floor Y)</div>
+                <div class="sec-t">Elevation grille combat</div>
                 <div class="row">
                     <label>Grid Y</label>
                     <input type="range" id="gridElevationSlider" min="-2" max="4" step="0.1" value="${this.currentGridElevation}"/>
@@ -1485,17 +1485,17 @@ export class MapEditor {
             this.customW = parseInt((document.getElementById("gridW") as HTMLInputElement).value);
             this.customD = parseInt((document.getElementById("gridD") as HTMLInputElement).value);
             this.rebuildCombatGrid();
-            this.camera.target = new Vector3((this.customW*this.tileSize)/2, 0, (this.customD*this.tileSize)/2);
+            this.camera.target = new Vector3((this.customW*this.tileSize)/2, this.currentGridElevation, (this.customD*this.tileSize)/2);
             this.rebuildSceneLayers();
         };
         document.getElementById("gridW")!.addEventListener("change", onGridChange);
         document.getElementById("gridD")!.addEventListener("change", onGridChange);
 
-        document.getElementById("floorYSlider")!.addEventListener("input", e => {
-            this.currentFloorY = parseFloat((e.target as HTMLInputElement).value);
-            this.terrainPlane.position.y = this.currentFloorY;
-            document.getElementById("floorYVal")!.textContent = this.currentFloorY.toFixed(1);
-            this.rebuildSceneLayers();
+        document.getElementById("gridElevationSlider")!.addEventListener("input", e => {
+            this.currentGridElevation = parseFloat((e.target as HTMLInputElement).value);
+            this.terrainPlane.position.y = this.currentGridElevation;
+            document.getElementById("gridElevationVal")!.textContent = this.currentGridElevation.toFixed(1);
+            this.rebuildCombatGrid();
         });
 
         byId<HTMLSelectElement>("biomeSelect")?.addEventListener("change", e => {
@@ -1583,7 +1583,7 @@ export class MapEditor {
                     pt.z >= zMin - clearance && pt.z <= zMax + clearance) {
                     return;
                 }
-                const py = this.currentFloorY + this.customOffsetY;
+                const py = this.currentGridElevation + this.customOffsetY;
                 if (this.selectedIsAnimated) {
                     const def = this.allAnimatedProps.find(p => p.file === this.selectedAsset);
                     if (!def) return;
@@ -1623,7 +1623,7 @@ export class MapEditor {
         });
         const out: any = {
             version:"4.1", gridW:this.customW, gridD:this.customD,
-            floorY: Number(this.terrainPlane.position.y.toFixed(2)),
+            gridElevation: Number(this.currentGridElevation.toFixed(2)),
             biome:  this.currentBiome,
             decorations: decorList,
             proceduralMeta: { seed:this.procSeed, density:this.procDensity, cloudSeed:this.cloudSeed, groundSeed:this.groundSeed }
@@ -1658,13 +1658,15 @@ export class MapEditor {
                     this.layersTab?.loadOverridesFromJSON(d.layerOverrides);
                     this.rebuildSceneLayers();
                 }
-                if (d.floorY!=null) {
-                    this.currentFloorY=d.floorY;
-                    this.terrainPlane.position.y=d.floorY;
-                    const floorSlider = document.getElementById("floorYSlider") as HTMLInputElement | null;
-                    if (floorSlider) floorSlider.value=String(d.floorY);
-                    const floorVal = document.getElementById("floorYVal");
-                    if (floorVal) floorVal.textContent=d.floorY.toFixed(1);
+                const importedGridElevation = d.gridElevation ?? d.floorY;
+                if (importedGridElevation!=null) {
+                    this.currentGridElevation=importedGridElevation;
+                    this.terrainPlane.position.y=importedGridElevation;
+                    const gridElevationSlider = document.getElementById("gridElevationSlider") as HTMLInputElement | null;
+                    if (gridElevationSlider) gridElevationSlider.value=String(importedGridElevation);
+                    const gridElevationVal = document.getElementById("gridElevationVal");
+                    if (gridElevationVal) gridElevationVal.textContent=importedGridElevation.toFixed(1);
+                    this.rebuildCombatGrid();
                     this.rebuildSceneLayers();
                 }
                 if (d.gridW&&d.gridD) {
@@ -1693,7 +1695,7 @@ export class MapEditor {
                         const layer = (dec.layer === "back" || dec.layer === "front" || dec.layer === "fore" || dec.layer === "mid")
                             ? (dec.layer === "fore" ? "front" : dec.layer) as PropLayer
                             : "mid";
-                        const py = dec.y ?? this.currentFloorY;
+                        const py = dec.y ?? this.currentGridElevation;
                         if (dec.animated) {
                             const def = this.allAnimatedProps.find(p => p.file === dec.file);
                             if (def) {

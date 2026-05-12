@@ -151,7 +151,7 @@ export class CombatScene {
 
     this.setupLighting(artPreset);
     
-    await this.buildDioramaScenery(gridW * 2, gridD * 2, biome, customMapData, artPreset, gridElevation);
+    await this.buildDioramaScenery(gridW * 2, gridD * 2, biome, customMapData, artPreset);
 
     this._camera = new TacticalCamera(this._scene);
     this._scene.activeCamera = this._camera.babylonCamera; 
@@ -446,21 +446,18 @@ export class CombatScene {
       mapD: number,
       biome: string,
       mapData: ExportedCombatMapData | null,
-      preset: CombatArtPreset,
-      gridElevation: number = 0
+      preset: CombatArtPreset
   ): Promise<void> {
       const sceneryRoot = new TransformNode("SceneryRoot", this._scene);
       sceneryRoot.parent = this._combatRoot;
       this._currentSceneryRoot = sceneryRoot;
       
-      let baseSurfaceY = gridElevation; 
+      let baseSurfaceY = 0; 
       const gmMode = GameManager.getInstance().activeCombatConfig;
 
       // On tente d'abord de lire s'il y a un JSON Custom exporté défini dans plateaus.json => "combatConfig.mapFile"
       const customMapLoaded = !!mapData;
-      if (mapData?.gridElevation !== undefined) {
-          baseSurfaceY = mapData.gridElevation;
-      } else if (mapData?.floorY !== undefined) {
+      if (mapData?.floorY !== undefined && mapData?.gridElevation === undefined) {
           baseSurfaceY = mapData.floorY;
       }
       const layerPreset = BIOME_LAYER_PRESETS[biome] ?? BIOME_LAYER_PRESETS['forest'];
