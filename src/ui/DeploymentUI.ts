@@ -331,6 +331,11 @@ export class DeploymentUI {
     this.selectedId = null;
     this.updateVisuals();
   }
+
+  public selectUnit(unitId: string | null): void {
+    this.selectedId = unitId;
+    this.updateVisuals();
+  }
   
   public updateDeploymentCache(deployedIds: Set<string>): void {
       this.lastDeployedIds = deployedIds;

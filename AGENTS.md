@@ -1,110 +1,94 @@
-# AGENTS.md — Intégration décors 2.5D tactique BabylonJS
+# AGENTS.md - Layers 2.5D Combat BabylonJS
 
-## Contexte du projet
+## Contexte
 
-Le projet est un jeu RPG tactics 2.5D sous BabylonJS.
+Le projet est un RPG tactics 2.5D sous BabylonJS. La scene de combat combine :
+- une grid 3D tactique ;
+- des unites en sprites/billboards ;
+- une UI HTML superposee ;
+- une composition de decor peinte en layers 16:9.
 
-La scène de combat contient :
-- une grid/plateau 3D tactique ;
-- des personnages sous forme de sprites ou billboards ;
-- plusieurs couches de décors 2D stylized painted ;
-- deux modes caméra :
-  - caméra frontale ;
-  - caméra overview légèrement inclinée du haut vers le bas.
+La priorite visuelle est claire : le decor doit englober la scene, mais la grid et les unites restent toujours lisibles et prioritaires.
 
-Objectif principal :
-améliorer l’intégration visuelle des layers de décor autour de la grid 3D pour éviter l’effet “image plate collée derrière le plateau”.
+## Direction Artistique
 
-## Problème actuel
+Le rendu vise une scene HD-2D fantasy sombre, type foret magique :
+- profondeur peinte ;
+- lumiere centrale ;
+- brume verte basse ;
+- lucioles et particules discretes ;
+- premier plan qui encadre sans masquer le gameplay.
 
-Le rendu actuel présente :
-- des layers trop rectangulaires ;
-- des coupures visibles autour du décor ;
-- un mauvais raccord entre le plateau 3D et le background ;
-- des plans 2D qui paraissent plats en mode overview ;
-- une brume/FX qui n’est pas encore utilisée comme couche de transition ;
-- des problèmes d’alpha ou de fond damier sur certains assets.
+Les assets de decor doivent etre penses comme une composition complete 16:9, idealement 3072x1728 ou equivalent. Le plateau tactique est pose dans la zone basse/lisible de cette composition.
 
-## Objectif visuel
+## Contrat Layers
 
-La scène doit ressembler à une arène tactique placée dans une forêt magique sombre.
+Ordre logique de l'arriere vers l'avant :
+1. `background` : ambiance generale, profondeur, lumiere centrale.
+2. `midground` : vegetation/rochers derriere le plateau, volume de scene.
+3. `platform_blend_fog` : brume basse qui masque le raccord plateau/decor.
+4. grid 3D.
+5. unites.
+6. `foreground_frame` : troncs, racines, feuillages lateraux.
+7. `fx_overlay` : brume, lucioles, rayons doux.
+8. UI.
 
-Le plateau 3D doit rester lisible et central.
+Les layers BabylonJS doivent rester non pickables pour ne jamais bloquer les clics de deploiement, de selection, d'AOE ou de grille.
 
-Les décors doivent créer de la profondeur avec plusieurs couches :
-1. Background principal très éloigné.
-2. Midground arbres/rochers derrière le plateau.
-3. Foreground frame sur les côtés/bas de l’écran.
-4. FX overlay : brume verte, lucioles, rayons doux.
-5. Platform blend fog : brume basse autour du plateau pour masquer les coupures.
+## Regles Techniques
 
-## Règles techniques BabylonJS
+Utiliser `SceneLayerManager` pour la scene de combat et la preview MapEditor.
 
-Créer ou améliorer un système de layers 2.5D avec :
-- `SceneLayerManager` ou équivalent ;
-- des planes BabylonJS pour chaque layer ;
-- matériaux alpha propres ;
-- `disableLighting = true` pour les décors peints ;
+Pour chaque layer :
+- `MeshBuilder.CreatePlane` ;
+- material alpha propre ;
+- `disableLighting = true` ;
 - `backFaceCulling = false` ;
-- alpha blend correct ;
-- possibilité d’utiliser additive blending pour les FX ;
-- tri propre des layers ;
-- réglages distincts par mode caméra.
+- `useAlphaFromDiffuseTexture = true` pour les PNG ;
+- `isPickable = false` ;
+- blend additive uniquement pour les FX/fog si necessaire.
 
-Ne pas utiliser un billboard total pour tous les layers.
-Préférer :
-- background fixe ou quasi fixe ;
-- midground semi-fixe ;
-- foreground proche caméra avec parallax plus marqué ;
-- FX overlay avec alpha/additive.
+Ne pas melanger UI et decor. Ne pas appliquer les lumieres 3D aux images peintes.
 
-## Modes caméra
+## Camera
 
-Prévoir deux presets :
+Deux modes doivent rester supportes :
 
-### Front Camera
-- background visible à 100 %
-- midground visible à 100 %
-- foreground visible à 70–90 %
-- fog/FX visible à 30–45 %
+### Front
+- tous les layers actifs ;
+- foreground plus present ;
+- FX/brume visibles mais subtils ;
+- grid et personnages nets.
 
-### Overview Camera
-- background visible à 100 %
-- midground visible à 70–90 %
-- foreground réduit à 30–50 %
-- fog/FX réduit à 20–35 %
+### Overview
+- background actif ;
+- midground reduit si necessaire ;
+- foreground reduit pour eviter l'effet de plan plat ;
+- FX plus discret ;
+- gameplay lisible.
 
-## Livrables attendus
+`applyCameraMode("front" | "overview")` doit ajuster alpha, offsets et visibilite.
 
-Quand tu travailles sur cet aspect, tu dois :
-1. Identifier les fichiers liés à la scène de combat.
-2. Identifier les fichiers liés à la caméra.
-3. Identifier la création de la grid 3D.
-4. Ajouter ou améliorer un gestionnaire de layers.
-5. Ajouter des paramètres faciles à ajuster.
-6. Préserver le gameplay existant.
-7. Ne pas casser l’UI.
-8. Ajouter des commentaires clairs.
-9. Proposer une checklist de test manuel.
+## MapEditor
 
-## À éviter
+L'onglet Layers doit prioriser :
+- assets par layer ;
+- position ;
+- dimensions ;
+- alpha ;
+- blend mode ;
+- parallax ;
+- elevation de la grid combat.
 
-Ne pas :
-- modifier le système de combat sans nécessité ;
-- déplacer les personnages sans raison ;
-- mélanger UI et décor ;
-- appliquer la lumière 3D aux images peintes ;
-- laisser des fonds damier visibles ;
-- utiliser des images avec fond opaque non voulu ;
-- cacher la grid ou les personnages avec le foreground.
+Les props individuels deviennent secondaires. Ils restent possibles, mais la direction principale vient des layers composes.
 
-## Validation visuelle
+## Validation
 
-Après modification, vérifier :
+Avant de livrer une modification sur cette zone, verifier :
 - la grid reste lisible ;
-- les personnages restent visibles ;
-- le décor n’a plus de bord rectangulaire évident ;
-- la brume masque les transitions ;
-- les layers gardent une profondeur crédible en caméra frontale ;
-- les layers ne deviennent pas bizarres en overview ;
-- les assets transparents n’affichent pas de damier.
+- les unites ne paraissent pas transparentes ;
+- les layers n'ont pas d'effet rectangle flottant ;
+- la brume masque le raccord plateau/decor ;
+- les clics sur les cases de deploiement fonctionnent ;
+- AOE, details et overlays ne sont pas coupes ;
+- la preview MapEditor correspond au runtime combat.

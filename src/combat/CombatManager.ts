@@ -103,6 +103,8 @@ export class CombatManager {
   private maxPlayerUnits: number = 4;
   private selectedUnitData: UnitData | null = null;
   private deploymentMap: Map<TileData, Unit> = new Map();
+  private lastDeploymentInteractionKey = '';
+  private lastDeploymentInteractionAt = 0;
 
   private activeUnit: Unit | null = null;
   private npcAIs:     Map<string, NPCAI> = new Map();
@@ -267,6 +269,17 @@ export class CombatManager {
     if (this.state !== CombatState.DEPLOYMENT) return;
     if (!tile.isDeploymentTile) return;
 
+    const now = Date.now();
+    const interactionKey = `${tile.x}:${tile.z}`;
+    if (
+      this.lastDeploymentInteractionKey === interactionKey &&
+      now - this.lastDeploymentInteractionAt < 140
+    ) {
+      return;
+    }
+    this.lastDeploymentInteractionKey = interactionKey;
+    this.lastDeploymentInteractionAt = now;
+
     const existingUnit = this.deploymentMap.get(tile);
 
     if (this.selectedUnitData) {
@@ -274,7 +287,6 @@ export class CombatManager {
       const previousTile = this.findDeploymentTileByUnitId(selected.id);
 
       if (existingUnit?.id === selected.id) {
-        this.undeployUnit(tile);
         this.selectedUnitData = null;
         this.deploymentUI?.clearSelection();
         return;
@@ -289,6 +301,11 @@ export class CombatManager {
       this.deployUnit(selected, tile);
     } else if (existingUnit) {
       this.undeployUnit(tile);
+      const unitData = existingUnit.status.unit;
+      this.selectedUnitData = unitData;
+      this.deploymentUI?.selectUnit(unitData.id);
+      this.hud?.showUnitData(unitData);
+      this.hud?.show();
     }
   }
 

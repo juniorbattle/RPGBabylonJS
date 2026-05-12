@@ -13,7 +13,7 @@ import {
 import { CombatGrid, GridConfig }                          from './CombatGrid';
 import { CombatManager }                                   from './CombatManager';
 import { CombatArtPreset, FloorConfig, SkyColors, SunConfig, getCombatArtPreset } from './CombatArtPresets';
-import { BiomeLayerManager, BIOME_LAYER_PRESETS } from './BiomeLayerSystem';
+import { SceneLayerManager, SCENE_LAYER_PRESETS } from '../rendering/SceneLayerManager';
 import { TacticalCamera }                                  from '../camera/TacticalCamera';
 import { ClanManager }                                     from '../data/ClanManager';
 import { GameManager }                                     from '../data/GameManager';
@@ -112,7 +112,7 @@ export class CombatScene {
   private _activeArtPreset: CombatArtPreset | null = null;
   private _cinematicOccluders: CinematicOccluderMaterial[] = [];
   private _propShadowMat: StandardMaterial | null = null;
-  private _layerManager: BiomeLayerManager | null = null;
+  private _layerManager: SceneLayerManager | null = null;
 
   constructor(scene: Scene, _canvas: HTMLCanvasElement, engine: Engine) {
     this._scene = scene;
@@ -460,7 +460,7 @@ export class CombatScene {
       if (mapData?.floorY !== undefined && mapData?.gridElevation === undefined) {
           baseSurfaceY = mapData.floorY;
       }
-      const layerPreset = BIOME_LAYER_PRESETS[biome] ?? BIOME_LAYER_PRESETS['forest'];
+      const layerPreset = SCENE_LAYER_PRESETS[biome] ?? SCENE_LAYER_PRESETS['forest'];
       const hasAuthoredLayerSet = biome === 'forest' || !!mapData?.layerOverrides?.[biome]?.background?.file;
       const usesLayerBackdrop = hasAuthoredLayerSet && !!(mapData?.layerOverrides?.[biome]?.background?.file ?? layerPreset.background.file);
       
@@ -504,8 +504,8 @@ export class CombatScene {
 
       // 2. BACKGROUND HD-2D — Layers PNG par biome
       // Le background procédural est remplacé par 4 plans PNG empilés
-      // gérés par BiomeLayerManager : background, midground, fxOverlay, foreground.
-      this._layerManager = new BiomeLayerManager(
+      // geres par SceneLayerManager : background, midground, platform fog, foreground, fx overlay.
+      this._layerManager = new SceneLayerManager(
           this._scene,
           sceneryRoot,
           mapW,

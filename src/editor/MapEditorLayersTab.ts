@@ -15,15 +15,17 @@
  *        this.layersTab = new MapEditorLayersTab(this, this.scene, this.manifest);
  */
 
-import {
-    BiomeLayerPreset, LayerAsset, BIOME_LAYER_PRESETS
-} from '../combat/BiomeLayerSystem';
+import { SCENE_LAYER_PRESETS as BIOME_LAYER_PRESETS } from '../rendering/SceneLayerManager';
+import type {
+    SceneLayerAsset as LayerAsset,
+    SceneLayerPreset as BiomeLayerPreset,
+} from '../rendering/SceneLayerTypes';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type LayerKey = 'background' | 'midground' | 'foreground' | 'fxOverlay';
+type LayerKey = 'background' | 'midground' | 'platformBlendFog' | 'foreground' | 'fxOverlay';
 
 interface LayerMeta {
     key:   LayerKey;
@@ -33,6 +35,7 @@ interface LayerMeta {
 }
 
 const LAYER_META: LayerMeta[] = [
+    { key: 'platformBlendFog', label: 'Platform Fog', icon: 'fog', color: '#123322' },
     { key: 'background', label: 'Background',  icon: '🌄', color: '#2a3a55' },
     { key: 'midground',  label: 'Midground',   icon: '🌲', color: '#1e3a28' },
     { key: 'foreground', label: 'Foreground',  icon: '🪵', color: '#1a1f18' },
@@ -42,11 +45,10 @@ const LAYER_META: LayerMeta[] = [
 const FOREST_V3_FILES: Record<LayerKey, string> = {
     background: 'bg_forest_v3_main.png',
     midground: 'mid_forest_v3_alpha.png',
+    platformBlendFog: 'fx_forest_v3_alpha.png',
     foreground: 'fore_forest_v3_alpha.png',
     fxOverlay: 'fx_forest_v3_alpha.png',
 };
-
-const REQUIRED_LAYER_SIZE = { width: 3072, height: 1728 };
 
 // ---------------------------------------------------------------------------
 // MapEditorLayersTab
@@ -248,7 +250,7 @@ export class MapEditorLayersTab {
                 </select>
             </div>
             <button id="btnApplyForestV3" class="btn" style="background:#1c3423;color:#76e8a2;width:100%;padding:7px 0;margin-top:4px;">
-                Appliquer preset Forest V3
+                Appliquer preset forest
             </button>
             <details>
                 <summary>Reglages secondaires</summary>
@@ -274,7 +276,7 @@ export class MapEditorLayersTab {
         </div>
 
         <div class="contract-status">
-            <div style="font-size:9px;color:#d6b35a;letter-spacing:.12em;text-transform:uppercase;font-weight:900;">Contrat V3</div>
+            <div style="font-size:9px;color:#d6b35a;letter-spacing:.12em;text-transform:uppercase;font-weight:900;">Stack layers</div>
             <div id="layerContractStatus" style="margin-top:4px;"></div>
         </div>
 
@@ -328,6 +330,7 @@ export class MapEditorLayersTab {
             ...existing,
             background: { ...base.background, ...(existing.background ?? {}) },
             midground:  { ...base.midground,  ...(existing.midground  ?? {}) },
+            platformBlendFog: { ...base.platformBlendFog, ...(existing.platformBlendFog ?? {}) },
             foreground: { ...base.foreground, ...(existing.foreground ?? {}) },
             fxOverlay:  { ...base.fxOverlay,  ...(existing.fxOverlay  ?? {}) },
         };
@@ -541,6 +544,7 @@ export class MapEditorLayersTab {
             ...existing,
             background: { ...base.background, ...(existing.background ?? {}) },
             midground:  { ...base.midground,  ...(existing.midground  ?? {}) },
+            platformBlendFog: { ...base.platformBlendFog, ...(existing.platformBlendFog ?? {}) },
             foreground: { ...base.foreground, ...(existing.foreground ?? {}) },
             fxOverlay:  { ...base.fxOverlay,  ...(existing.fxOverlay  ?? {}) },
         };
@@ -571,6 +575,7 @@ export class MapEditorLayersTab {
         const imageLayers = [
             { cfg: preset.background, fit: 'cover' as const },
             { cfg: preset.midground, fit: 'stage' as const },
+            { cfg: preset.platformBlendFog, fit: 'stage' as const },
             { cfg: preset.fxOverlay, fit: 'cover' as const },
             { cfg: preset.foreground, fit: 'front' as const },
         ];
@@ -716,34 +721,12 @@ export class MapEditorLayersTab {
                 <div class="contract-line" data-contract-layer="${meta.key}">
                     <strong>${meta.label}</strong>
                     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${file || 'aucun fichier'}</span>
-                    <span class="contract-badge warn" data-contract-size="${meta.key}">scan...</span>
+                    <span class="contract-badge ok" data-contract-size="${meta.key}">actif</span>
                     ${fileBadge}
                 </div>
             `;
         }).join('');
 
-        for (const meta of LAYER_META) {
-            const cfg = preset[meta.key];
-            const badge = host.querySelector(`[data-contract-size="${meta.key}"]`) as HTMLElement | null;
-            if (!badge || !cfg.file) {
-                if (badge) {
-                    badge.className = 'contract-badge bad';
-                    badge.textContent = 'missing';
-                }
-                continue;
-            }
-
-            const img = this.getPreviewImage(cfg.file, () => this.updateSizeBadge(badge, img));
-            if (img.complete) this.updateSizeBadge(badge, img);
-        }
-    }
-
-    private updateSizeBadge(badge: HTMLElement, img: HTMLImageElement): void {
-        const ok = img.naturalWidth === REQUIRED_LAYER_SIZE.width && img.naturalHeight === REQUIRED_LAYER_SIZE.height;
-        badge.className = `contract-badge ${ok ? 'ok' : 'bad'}`;
-        badge.textContent = img.naturalWidth && img.naturalHeight
-            ? `${img.naturalWidth}x${img.naturalHeight}`
-            : 'load fail';
     }
 
     private applyForestV3Preset(): void {
@@ -752,6 +735,7 @@ export class MapEditorLayersTab {
             id: 'forest',
             background: { ...base.background, file: FOREST_V3_FILES.background },
             midground: { ...base.midground, file: FOREST_V3_FILES.midground },
+            platformBlendFog: { ...base.platformBlendFog, file: FOREST_V3_FILES.platformBlendFog },
             foreground: { ...base.foreground, file: FOREST_V3_FILES.foreground },
             fxOverlay: { ...base.fxOverlay, file: FOREST_V3_FILES.fxOverlay },
         };

@@ -17,7 +17,8 @@ import {
 
 import { CombatGrid, GridConfig } from '../combat/CombatGrid';
 import { MapEditorLayersTab } from '../editor/MapEditorLayersTab';
-import { BiomeLayerManager, BiomeLayerPreset } from '../combat/BiomeLayerSystem';
+import { SceneLayerManager } from '../rendering/SceneLayerManager';
+import type { SceneLayerPreset } from '../rendering/SceneLayerTypes';
 
 // ---------------------------------------------------------------------------
 // Types manifest
@@ -611,7 +612,7 @@ export class MapEditor {
     private groundDynTex!:    DynamicTexture;
     private terrainMaterial!: StandardMaterial;
     private layerPreviewRoot!: TransformNode;
-    private layerManager: BiomeLayerManager | null = null;
+    private layerManager: SceneLayerManager | null = null;
     private layersTab: MapEditorLayersTab | null = null;
 
     private static readonly SAFE_CLEARANCE = 2.5;
@@ -762,12 +763,12 @@ export class MapEditor {
         this.rebuildSceneLayers();
     }
 
-    private rebuildSceneLayers(overrides?: Partial<BiomeLayerPreset>): void {
+    private rebuildSceneLayers(overrides?: Partial<SceneLayerPreset>): void {
         if (!this.layerPreviewRoot) return;
         const mapW = this.customW * this.tileSize;
         const mapD = this.customD * this.tileSize;
         this.layerManager?.dispose();
-        this.layerManager = new BiomeLayerManager(
+        this.layerManager = new SceneLayerManager(
             this.scene,
             this.layerPreviewRoot,
             mapW,
