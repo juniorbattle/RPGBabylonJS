@@ -1,0 +1,466 @@
+{
+  "dialogues": {
+    "lion_intro": {
+      "id": "lion_intro",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "LE CHEF DU CLAN",
+          "speakerTag": "LION",
+          "text": "Bienvenue, guerrier. Le village de Valmir est sous la menace directe des pillards Snake. Secourez-les, et notre alliance sera scellée par le sang et l'honneur.",
+          "icon": "🦁",
+          "side": "right",
+          "next": 2
+        },
+        {
+          "id": 2,
+          "speakerName": "LE SAGE",
+          "speakerTag": "CONSEILLER",
+          "text": "C'est une épreuve de justice. Montrez votre valeur par l'honneur. Mais restez vigilant, le Serpent pourrait être manipulé par une ombre plus grande.",
+          "icon": "📖",
+          "side": "left",
+          "next": 3
+        },
+        {
+          "id": 3,
+          "speakerName": "LE TEMPÉRANT",
+          "speakerTag": "CONSEILLER",
+          "text": "Gardons la tête froide. Sauver le village est coûteux. Si nous voulons gagner la guerre, nous devons préserver nos ressources avant tout. La victoire justifie les sacrifices.",
+          "icon": "🎭",
+          "side": "right",
+          "next": null
+        }
+      ]
+    },
+    "village_target": {
+      "id": "village_target",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "HABITANT TERRÉ",
+          "speakerTag": "VILLAGEOIS",
+          "text": "Pitié ! Ils emmènent nos enfants vers le nord... Allez-vous nous aider ou n'êtes-vous venu que pour le trésor ?",
+          "icon": "🏘️",
+          "side": "center",
+          "choices": [
+            { "text": "Aider le village (Honneur)", "next": 2 },
+            { "text": "Sécuriser les coffres d'abord (Pragmatisme)", "next": 3 }
+          ]
+        },
+        {
+          "id": 2,
+          "speakerName": "HABITANT TERRÉ",
+          "speakerTag": "VILLAGEOIS",
+          "text": "Merci infiniment ! Écrasez ces serpents avant qu'ils ne s'échappent !",
+          "icon": "🏘️",
+          "side": "center",
+          "next": "village_help",
+          "impact": { 
+            "action": "combat",
+            "combatConfig": {
+              "biome": "forest",
+              "grid": "8x8",
+              "enemies": ["snake_scout", "snake_warrior", "snake_warrior"],
+              "objectiveText": "Sauvez les villageois des pillards Serpents !"
+            }
+          }
+        },
+        {
+          "id": 3,
+          "speakerName": "HABITANT TERRÉ",
+          "speakerTag": "VILLAGEOIS",
+          "text": "Prenez ce que vous voulez, mais laissez-nous la vie sauve...",
+          "icon": "🏘️",
+          "side": "center",
+          "next": "village_ignore",
+          "impact": { 
+            "action": "combat",
+            "combatConfig": {
+              "biome": "city",
+              "grid": "6x6",
+              "enemies": ["snake_scout"],
+              "objectiveText": "Éliminez les témoins restants pour piller en paix."
+            }
+          }
+        }
+      ]
+    },
+    "village_help": {
+      "id": "village_help",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "LE SAGE",
+          "speakerTag": "CONSEILLER",
+          "text": "Vous avez fait le bon choix. Les villageois vous seront reconnaissants, et le chef Alaric appréciera votre honneur.",
+          "icon": "📖",
+          "side": "left",
+          "next": 2
+        },
+        {
+          "id": 2,
+          "speakerName": "HABITANT TERRÉ",
+          "speakerTag": "VILLAGEOIS",
+          "text": "Merci. Les enfants sont sains et saufs grâce à vous.",
+          "icon": "🏘️",
+          "side": "center",
+          "next": null,
+          "impact": { "reputation": 10, "flags": { "missionSuccess": true } }
+        }
+      ]
+    },
+    "village_ignore": {
+      "id": "village_ignore",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "LE TEMPÉRANT",
+          "speakerTag": "CONSEILLER",
+          "text": "Sage décision. L'or nous permettra d'acheter des armes et des provisions. Mais préparez-vous à affronter la colère du chef.",
+          "icon": "🎭",
+          "side": "right",
+          "next": 2
+        },
+        {
+          "id": 2,
+          "speakerName": "HABITANT TERRÉ",
+          "speakerTag": "VILLAGEOIS",
+          "text": "Vous... vous nous abandonnez ? Puissent les dieux vous juger !",
+          "icon": "🏘️",
+          "side": "center",
+          "next": null,
+          "impact": { "gold": 300, "reputation": -15, "flags": { "missionSuccess": false } }
+        }
+      ]
+    },
+    "mystery_recruit": {
+      "id": "mystery_recruit",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "ÉCLAIREUR NOMADE",
+          "speakerTag": "MYSTÈRE",
+          "text": "Salutations. J'observe votre groupe depuis l'orée du bois. Vous marchez avec détermination. Ma lame est à louer, si vous avez de l'or.",
+          "icon": "🏹",
+          "side": "center",
+          "choices": [
+            { "text": "Recruter (50 Or)", "next": 2, "impact": { "gold": -50, "recruitUnit": "unit_cedric", "reputation": 5 } },
+            { "text": "Refuser", "next": 3 }
+          ]
+        },
+        {
+          "id": 2,
+          "speakerName": "ÉCLAIREUR NOMADE",
+          "speakerTag": "MYSTÈRE",
+          "text": "Marché conclu. Mon arc est vôtre.",
+          "icon": "🏹",
+          "side": "center",
+          "next": null
+        },
+        {
+          "id": 3,
+          "speakerName": "ÉCLAIREUR NOMADE",
+          "speakerTag": "MYSTÈRE",
+          "text": "Je comprends. Puissiez-vous trouver la gloire ailleurs.",
+          "icon": "🏹",
+          "side": "center",
+          "next": null
+        }
+      ]
+    },
+    "mystery_ambush": {
+      "id": "mystery_ambush",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "PILLARD SNAKE",
+          "speakerTag": "EMBUSCADE",
+          "text": "On vous surveillait depuis le départ... Donnez-nous votre or et peut-être qu'on vous laissera la vie sauve !",
+          "icon": "⚔️",
+          "side": "center",
+          "choices": [
+            { "text": "Se battre !", "next": 2 },
+            { "text": "Négocier (100 Or)", "next": 3, "impact": { "gold": -100, "reputation": -5 } }
+          ]
+        },
+        {
+          "id": 2,
+          "speakerName": "PILLARD SNAKE",
+          "speakerTag": "EMBUSCADE",
+          "text": "Vous l'aurez voulu ! À l'attaque !",
+          "icon": "⚔️",
+          "side": "center",
+          "next": null
+        },
+        {
+          "id": 3,
+          "speakerName": "PILLARD SNAKE",
+          "speakerTag": "EMBUSCADE",
+          "text": "Haha ! Les riches sont si faciles à berner... Partez avant qu'on change d'avis.",
+          "icon": "⚔️",
+          "side": "center",
+          "next": null
+        }
+      ]
+    },
+    "mystery_hermit": {
+      "id": "mystery_hermit",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "ERMITE MYSTÉRIEUX",
+          "speakerTag": "MYSTÈRE",
+          "text": "Je vois en vous une aura particulière. Acceptez cette potion de sagesse, elle pourrait vous servir contre les ténèbres à venir.",
+          "icon": "🧙",
+          "side": "center",
+          "choices": [
+            { "text": "Accepter avec gratitude", "next": 2, "impact": { "item": "wisdom_potion", "reputation": 5 } },
+            { "text": "Refuser poliment", "next": 3 }
+          ]
+        },
+        {
+          "id": 2,
+          "speakerName": "ERMITE MYSTÉRIEUX",
+          "speakerTag": "MYSTÈRE",
+          "text": "Que la lumière guide vos pas.",
+          "icon": "🧙",
+          "side": "center",
+          "next": null
+        },
+        {
+          "id": 3,
+          "speakerName": "ERMITE MYSTÉRIEUX",
+          "speakerTag": "MYSTÈRE",
+          "text": "Comme vous voudrez. L'orgueil mène parfois à la chute.",
+          "icon": "🧙",
+          "side": "center",
+          "next": null
+        }
+      ]
+    },
+    "elite_snake_commander": {
+      "id": "elite_snake_commander",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "COMMANDANT SNAKE",
+          "speakerTag": "ELITE",
+          "text": "Vous avez fait du chemin pour en arriver là. Mais votre aventure s'arrête ici, face au poignard du Serpent.",
+          "icon": "⚔️",
+          "side": "center",
+          "next": null
+        }
+      ]
+    },
+    "mystery_side_quest": {
+      "id": "mystery_side_quest",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "MARCHAND BLESSÉ",
+          "speakerTag": "MYSTÈRE",
+          "text": "À l'aide ! Mon chariot est brisé et les loups rôdent... Pourriez-vous me prêter quelques pièces pour les réparations ?",
+          "icon": "🏚️",
+          "side": "center",
+          "choices": [
+            { "text": "Aider (50 Or)", "next": 2, "impact": { "gold": -50, "reputation": 10 } },
+            { "text": "Ignorer", "next": 3, "impact": { "reputation": -5 } }
+          ]
+        },
+        {
+          "id": 2,
+          "speakerName": "MARCHAND BLESSÉ",
+          "speakerTag": "MYSTÈRE",
+          "text": "Que les dieux vous bénissent ! Je n'oublierai jamais votre générosité.",
+          "icon": "🏚️",
+          "side": "center",
+          "next": null
+        },
+        {
+          "id": 3,
+          "speakerName": "MARCHAND BLESSÉ",
+          "speakerTag": "MYSTÈRE",
+          "text": "... J'espère que vous ne connaîtrez jamais le malheur.",
+          "icon": "🏚️",
+          "side": "center",
+          "next": null
+        }
+      ]
+    },
+    "chest_simple": {
+      "id": "chest_simple",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "COFFRE ANCIEN",
+          "speakerTag": "TRÉSOR",
+          "text": "Vous avez forcé la serrure d'un coffre abandonné. Une bourse remplie de pièces d'or scintillait à l'intérieur !",
+          "icon": "🎁",
+          "side": "none",
+          "next": null,
+          "impact": { "gold": 100 }
+        }
+      ]
+    },
+    "chest_rare": {
+      "id": "chest_rare",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "COFFRE ORNÉ",
+          "speakerTag": "TRÉSOR RARE",
+          "text": "Ce coffre semble contenir des richesses d'un autre temps. Vous y trouvez une grande quantité d'or et une potion rare !",
+          "icon": "🎁",
+          "side": "none",
+          "next": null,
+          "impact": { "gold": 300, "item": "high_potion" }
+        }
+      ]
+    },
+    "mystery_shrine": {
+      "id": "mystery_shrine",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "AUTEL ANCIEN",
+          "speakerTag": "MYSTÈRE",
+          "text": "Une étrange lueur émane de cet autel. Vous sentez une énergie apaisante.",
+          "icon": "✨",
+          "side": "center",
+          "choices": [
+            { "text": "Prier (Soin complet)", "next": 2, "impact": { "item": "elixir" } },
+            { "text": "Partir", "next": 3 }
+          ]
+        },
+        {
+          "id": 2,
+          "speakerName": "AUTEL ANCIEN",
+          "speakerTag": "MYSTÈRE",
+          "text": "Une chaleur douce envahit votre corps. Vos blessures se referment.",
+          "icon": "✨",
+          "side": "center",
+          "next": null
+        },
+        {
+          "id": 3,
+          "speakerName": "AUTEL ANCIEN",
+          "speakerTag": "MYSTÈRE",
+          "text": "Vous quittez les lieux en silence.",
+          "icon": "✨",
+          "side": "center",
+          "next": null
+        }
+      ]
+    },
+    "mystery_trap": {
+      "id": "mystery_trap",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "PIÈGE !",
+          "speakerTag": "DANGER",
+          "text": "Vous entendez un déclic... C'est un piège !",
+          "icon": "⚠️",
+          "side": "center",
+          "next": 2,
+          "impact": { "gold": -50 }
+        },
+        {
+          "id": 2,
+          "speakerName": "PIÈGE !",
+          "speakerTag": "DANGER",
+          "text": "Dans la panique, vous avez perdu une partie de votre or en fuyant.",
+          "icon": "⚠️",
+          "side": "center",
+          "next": null
+        }
+      ]
+    },
+    "lion_finale_victory": {
+      "id": "lion_finale_victory",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "LE CHEF DU CLAN",
+          "speakerTag": "LION",
+          "text": "Vous avez tenu parole et sauvé mon peuple. Le Sceau du Lion est vôtre, ainsi que ma gratitude éternelle.",
+          "icon": "🦁",
+          "side": "right",
+          "next": 2
+        },
+        {
+          "id": 2,
+          "speakerName": "LE SAGE",
+          "speakerTag": "CONSEILLER",
+          "text": "Votre réputation grandit. Les clans commencent à parler de vous avec respect.",
+          "icon": "📖",
+          "side": "left",
+          "next": null
+        }
+      ]
+    },
+    "lion_finale_confrontation": {
+      "id": "lion_finale_confrontation",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "LE CHEF DU CLAN",
+          "speakerTag": "LION",
+          "text": "Vous avez trahi ma confiance et abandonné mon peuple. Je vous défie pour le Sceau du Lion !",
+          "icon": "🦁",
+          "side": "right",
+          "next": 2
+        },
+        {
+          "id": 2,
+          "speakerName": "LE TEMPÉRANT",
+          "speakerTag": "CONSEILLER",
+          "text": "Préparez-vous au combat. Il n'y aura pas de pitié.",
+          "icon": "🎭",
+          "side": "right",
+          "next": null,
+          "impact": { 
+            "action": "combat",
+            "combatConfig": {
+              "biome": "mountain",
+              "grid": "10x10",
+              "enemies": ["lion_chief"],
+              "objectiveText": "Survivez à la colère du Chef du Lion !"
+            }
+          }
+        }
+      ]
+    },
+    "start_maintenance": {
+      "id": "start_maintenance",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "INTENDANT",
+          "speakerTag": "CLAN",
+          "text": "Chef, il est temps de payer la solde des troupes. Le coût s'élève à {cost} pièces d'or !",
+          "icon": "💰",
+          "side": "right",
+          "choices": [
+            { "text": "Payer ({cost} Or)", "next": null, "impact": { "action": "pay_maintenance" } },
+            { "text": "Refuser (Risqué)", "next": null, "impact": { "action": "refuse_maintenance" } }
+          ]
+        }
+      ]
+    },
+    "unit_leaving": {
+      "id": "unit_leaving",
+      "steps": [
+        {
+          "id": 1,
+          "speakerName": "{unitName}",
+          "speakerTag": "{unitClass}",
+          "text": "Pas de solde, pas de combat. Je ne me bats pas pour la gloire seule. Adieu !",
+          "icon": "😠",
+          "side": "left",
+          "next": null
+        }
+      ]
+    }
+  }
+}

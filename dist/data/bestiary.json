@@ -1,0 +1,85 @@
+{
+    "enemies": {
+      "snake_scout": {
+        "id": "snake_scout",
+        "unitName": "Snake Scout",
+        "movementType": "dash",
+        "aiBehavior": "cautious",
+        "characterClass": "Rogue",
+        "portraitColor": "#4ade80",
+        "team": "TeamB",
+        "baseStats": { 
+          "maxHealth": 80, 
+          "strength": 12, 
+          "magic": 5, 
+          "endurance": 8, 
+          "dexterity": 15, 
+          "charisma": 8 
+        },
+        "level": { "currentLevel": 1, "currentXP": 0, "xpToNextLevel": 100 },
+        "weapons": [
+          { "weaponName": "Dagger", "range": 1, "damage": 12, "isAOE": false, "aoeRadius": 0 }
+        ],
+        "skillIds": ["rush"],
+        "moveRange": 4,
+        "jumpHeight": 1,
+        "xpReward": 50,
+        "goldReward": 25,
+        "drops": [ { "itemId": "potion_light", "rate": 0.3 } ]
+      },
+      "snake_warrior": {
+        "id": "snake_warrior",
+        "unitName": "Snake Warrior",
+        "movementType": "default",
+        "aiBehavior": "aggressive",
+        "characterClass": "Warrior",
+        "portraitColor": "#f87171",
+        "team": "TeamB",
+        "baseStats": { 
+          "maxHealth": 150, 
+          "strength": 18, 
+          "magic": 2, 
+          "endurance": 15, 
+          "dexterity": 10, 
+          "charisma": 5 
+        },
+        "level": { "currentLevel": 1, "currentXP": 0, "xpToNextLevel": 100 },
+        "weapons": [
+          { "weaponName": "Iron Axe", "range": 1, "damage": 22, "isAOE": false, "aoeRadius": 0 }
+        ],
+        "skillIds": ["smash"],
+        "moveRange": 3,
+        "jumpHeight": 1,
+        "xpReward": 80,
+        "goldReward": 40,
+        "drops": [ { "itemId": "antidote", "rate": 0.2 }, { "itemId": "iron_ore", "rate": 0.5 } ]
+      },
+      "lion_chief": {
+        "id": "lion_chief",
+        "unitName": "Chef Alaric",
+        "movementType": "default",
+        "aiBehavior": "aggressive",
+        "characterClass": "Paladin",
+        "portraitColor": "#f59e0b",
+        "team": "TeamB",
+        "baseStats": { 
+          "maxHealth": 350, 
+          "strength": 25, 
+          "magic": 10, 
+          "endurance": 20, 
+          "dexterity": 12, 
+          "charisma": 15 
+        },
+        "level": { "currentLevel": 5, "currentXP": 0, "xpToNextLevel": 1000 },
+        "weapons": [
+          { "weaponName": "Lion's Pride", "range": 1, "damage": 35, "isAOE": false, "aoeRadius": 0 }
+        ],
+        "skillIds": ["smash"],
+        "moveRange": 4,
+        "jumpHeight": 1,
+        "xpReward": 500,
+        "goldReward": 1000,
+        "drops": [ { "itemId": "strength_ring", "rate": 1.0 } ]
+      }
+    }
+}

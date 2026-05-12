@@ -1,0 +1,25 @@
+{
+  "accessories": [
+    { "id": "strength_ring", "itemName": "Anneau de Force", "description": "Augmente la force de 5 points.", "category": "Accessory", "iconKey": "💍", "statModifiers": [{ "stat": "Strength", "value": 5 }], "price": 100 },
+    { "id": "magic_pendant", "itemName": "Pendentif Magique", "description": "Augmente la magie de 5 points.", "category": "Accessory", "iconKey": "💍", "statModifiers": [{ "stat": "Magic", "value": 5 }], "price": 120 },
+    { "id": "life_belt", "itemName": "Ceinture de Vie", "description": "Augmente les PV max de 20.", "category": "Accessory", "iconKey": "💍", "statModifiers": [{ "stat": "Endurance", "value": 3 }], "price": 80 },
+    { "id": "agility_boots", "itemName": "Bottes d'Agilité", "description": "Augmente la vitesse et l'esquive.", "category": "Accessory", "iconKey": "👞", "statModifiers": [{ "stat": "Dexterity", "value": 5 }], "price": 150 },
+    { "id": "wisdom_crown", "itemName": "Couronne de Sagesse", "description": "Augmente grandement la magie.", "category": "Accessory", "iconKey": "👑", "statModifiers": [{ "stat": "Magic", "value": 8 }], "price": 200 }
+  ],
+  "consumables": [
+    { "id": "potion_light", "itemName": "Potion Légère", "description": "Restaure 30 PV.", "category": "Consumable", "isConsumable": true, "typeAction": "HEAL", "power": 30, "successRate": 100, "iconKey": "🧪", "price": 15, "range": 1, "aoe": { "isAOE": true, "radius": 0.4, "shape": "circle" } },
+    { "id": "antidote", "itemName": "Antidote", "description": "Guérit le poison.", "category": "Consumable", "isConsumable": true, "typeAction": "EFFECT", "power": 0, "successRate": 100, "iconKey": "🧪", "price": 10, "range": 1, "aoe": { "isAOE": true, "radius": 0.4, "shape": "circle" } },
+    { "id": "high_potion", "itemName": "Potion Haute", "description": "Restaure 100 PV.", "category": "Consumable", "isConsumable": true, "typeAction": "HEAL", "power": 100, "successRate": 100, "iconKey": "🧪", "price": 50, "range": 1, "aoe": { "isAOE": false } },
+    { "id": "bomb", "itemName": "Bombe", "description": "Inflige des dégâts de zone.", "category": "Consumable", "isConsumable": true, "typeAction": "DAMAGE", "power": 50, "successRate": 90, "iconKey": "💣", "price": 30, "range": 3, "aoe": { "isAOE": true, "radius": 1.5, "shape": "circle" } },
+    { "id": "throwing_knife", "itemName": "Couteau de Lancer", "description": "Inflige des dégâts légers à distance.", "category": "Consumable", "isConsumable": true, "typeAction": "DAMAGE", "power": 25, "successRate": 95, "iconKey": "🗡️", "price": 20, "range": 4, "aoe": { "isAOE": false } },
+    { "id": "elixir", "itemName": "Élixir", "description": "Restaure tous les PV et soigne les altérations.", "category": "Consumable", "isConsumable": true, "typeAction": "HEAL", "power": 999, "successRate": 100, "iconKey": "🍷", "price": 200, "range": 1, "aoe": { "isAOE": false } },
+    { "id": "smoke_bomb", "itemName": "Fumigène", "description": "Crée un nuage de fumée.", "category": "Consumable", "isConsumable": true, "typeAction": "EFFECT", "power": 0, "successRate": 100, "iconKey": "☁️", "price": 40, "range": 3, "aoe": { "isAOE": true, "radius": 2, "shape": "circle" } }
+  ],
+  "materials": [
+    { "id": "iron_ore", "itemName": "Minerai de Fer", "description": "Utilisé pour la forge.", "category": "Material", "iconKey": "🪨", "price": 5 },
+    { "id": "oak_wood", "itemName": "Bois de Chêne", "description": "Utilisé pour la construction.", "category": "Material", "iconKey": "🪵", "price": 3 },
+    { "id": "red_gem", "itemName": "Gemme Rouge", "description": "Une pierre précieuse rare.", "category": "Material", "iconKey": "💎", "price": 50 },
+    { "id": "mithril_ore", "itemName": "Minerai de Mithril", "description": "Un métal léger et résistant.", "category": "Material", "iconKey": "💎", "price": 25 },
+    { "id": "magic_wood", "itemName": "Bois Magique", "description": "Infusé de mana.", "category": "Material", "iconKey": "🪵", "price": 15 }
+  ]
+}

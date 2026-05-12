@@ -1,0 +1,32 @@
+{
+  "name": "gpa-tactics-babylon",
+  "version": "0.1.0",
+  "description": "GPA Tactics Movement — Babylon.js TypeScript port",
+  "main": "dist/bundle.js",
+  "scripts": {
+    "dev":   "webpack serve --mode development",
+    "build": "webpack --mode production",
+    "watch": "webpack --mode development --watch",
+    "scan": "node generate-manifest.js",
+    "props:v3:validate": "node scripts/validate-props-v3.js",
+    "props:v3:validate:strict": "node scripts/validate-props-v3.js --strict",
+    "characters:v1:validate": "node scripts/validate-characters-v1.js",
+    "characters:v1:prepare": "\"C:\\Users\\miche\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe\" scripts/prepare-characters-v1.py"
+  },
+  "dependencies": {
+    "@babylonjs/core":       "^7.0.0",
+    "@babylonjs/gui":        "^7.0.0",
+    "@babylonjs/materials":  "^7.0.0",
+    "@babylonjs/loaders":    "^7.0.0"
+  },
+  "devDependencies": {
+    "typescript":            "^5.4.0",
+    "webpack":               "^5.91.0",
+    "webpack-cli":           "^5.1.4",
+    "webpack-dev-server":    "^5.0.4",
+    "ts-loader":             "^9.5.1",
+    "html-webpack-plugin":   "^5.6.0",
+    "copy-webpack-plugin":   "^12.0.2",
+    "@types/node":           "^20.0.0"
+  }
+}

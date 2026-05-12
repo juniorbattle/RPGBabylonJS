@@ -1,0 +1,16 @@
+{
+  "weapons": [
+    { "id": "iron_sword", "weaponName": "Iron Sword", "type": "SWORD", "damage": 20, "range": 1, "accuracyBonus": 5, "critBonus": 5, "vfxId": "sword_slash", "iconKey": "⚔️" },
+    { "id": "steel_sword", "weaponName": "Steel Sword", "type": "SWORD", "damage": 25, "range": 1, "accuracyBonus": 7, "critBonus": 5, "vfxId": "sword_slash", "iconKey": "⚔️" },
+    { "id": "iron_dagger", "weaponName": "Iron Dagger", "type": "DAGGER", "damage": 12, "range": 1, "accuracyBonus": 15, "critBonus": 10, "vfxId": "dagger_stab", "iconKey": "⚔️" },
+    { "id": "hidden_dagger", "weaponName": "Shadow Dagger", "type": "DAGGER", "damage": 18, "range": 1, "accuracyBonus": 20, "critBonus": 15, "vfxId": "dagger_stab", "iconKey": "⚔️" },
+    { "id": "battle_axe", "weaponName": "Battle Axe", "type": "AXE", "damage": 28, "range": 1, "accuracyBonus": -10, "critBonus": 15, "vfxId": "axe_swing", "iconKey": "⚔️" },
+    { "id": "grand_axe", "weaponName": "Great Axe", "type": "AXE", "damage": 38, "range": 1, "accuracyBonus": -15, "critBonus": 20, "vfxId": "axe_swing", "iconKey": "⚔️" },
+    { "id": "wooden_spear", "weaponName": "Wooden Spear", "type": "SPEAR", "damage": 15, "range": 2, "accuracyBonus": 0, "critBonus": 5, "vfxId": "spear_thrust", "iconKey": "⚔️" },
+    { "id": "steel_spear", "weaponName": "Steel Spear", "type": "SPEAR", "damage": 22, "range": 2, "accuracyBonus": 5, "critBonus": 5, "vfxId": "spear_thrust", "iconKey": "⚔️" },
+    { "id": "short_bow", "weaponName": "Short Bow", "type": "BOW", "damage": 14, "range": 4, "minRange": 2, "accuracyBonus": 0, "critBonus": 5, "vfxId": "arrow_shot", "iconKey": "⚔️" },
+    { "id": "long_bow", "weaponName": "Long Bow", "type": "BOW", "damage": 22, "range": 6, "minRange": 3, "accuracyBonus": 5, "critBonus": 10, "vfxId": "arrow_shot", "iconKey": "⚔️" },
+    { "id": "wooden_staff", "weaponName": "Apprentice Staff", "type": "STAFF", "damage": 10, "range": 1, "accuracyBonus": 10, "critBonus": 0, "vfxId": "staff_hit", "iconKey": "⚔️" },
+    { "id": "mystic_staff", "weaponName": "Mystic Staff", "type": "STAFF", "damage": 18, "range": 1, "accuracyBonus": 15, "critBonus": 5, "vfxId": "staff_hit", "iconKey": "⚔️" }
+  ]
+}
