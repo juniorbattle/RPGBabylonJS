@@ -14,6 +14,7 @@ import { CombatGrid, GridConfig }                          from './CombatGrid';
 import { CombatManager }                                   from './CombatManager';
 import { CombatArtPreset, FloorConfig, SkyColors, SunConfig, getCombatArtPreset } from './CombatArtPresets';
 import { SceneLayerManager, SCENE_LAYER_PRESETS } from '../rendering/SceneLayerManager';
+import type { SceneLayerInput } from '../rendering/SceneLayerTypes';
 import { TacticalCamera }                                  from '../camera/TacticalCamera';
 import { ClanManager }                                     from '../data/ClanManager';
 import { GameManager }                                     from '../data/GameManager';
@@ -38,6 +39,7 @@ interface ExportedCombatMapData {
   proceduralMeta?: {
     groundSeed?: number;
   };
+  sceneLayers?: SceneLayerInput;
   layerOverrides?: Record<string, any>;
 }
 
@@ -461,8 +463,27 @@ export class CombatScene {
           baseSurfaceY = mapData.floorY;
       }
       const layerPreset = SCENE_LAYER_PRESETS[biome] ?? SCENE_LAYER_PRESETS['forest'];
-      const hasAuthoredLayerSet = biome === 'forest' || !!mapData?.layerOverrides?.[biome]?.background?.file;
-      const usesLayerBackdrop = hasAuthoredLayerSet && !!(mapData?.layerOverrides?.[biome]?.background?.file ?? layerPreset.background.file);
+      const sceneLayerInput = (mapData?.sceneLayers ?? mapData?.layerOverrides?.[biome]) as SceneLayerInput | undefined;
+      const firstLayerFile = (stack: any): string | null => {
+          if (Array.isArray(stack?.layers)) {
+              return stack.layers.find((layer: any) => layer?.enabled !== false && layer?.file)?.file ?? null;
+          }
+          return null;
+      };
+      const authoredLayerFile =
+          firstLayerFile(sceneLayerInput) ??
+          (sceneLayerInput as any)?.mainMidground?.file ??
+          (sceneLayerInput as any)?.midground?.file ??
+          (sceneLayerInput as any)?.backAtmosphere?.file ??
+          (sceneLayerInput as any)?.background?.file;
+      const presetLayerFile =
+          firstLayerFile(layerPreset) ??
+          layerPreset.mainMidground?.file ??
+          layerPreset.midground?.file ??
+          layerPreset.backAtmosphere?.file ??
+          layerPreset.background?.file;
+      const hasAuthoredLayerSet = biome === 'forest' || !!authoredLayerFile;
+      const usesLayerBackdrop = hasAuthoredLayerSet && !!(authoredLayerFile ?? presetLayerFile);
       
       // 1. LE SOL INFINI (Terrain Plane texturé HD-2D)
       // Remplace notre "Diorama Box / Table épaisse" d'avant par une plaine plate sur laquelle on répète l'image d'herbe.
@@ -502,9 +523,9 @@ export class CombatScene {
           this.buildStageGroundAccent(sceneryRoot, mapW, mapD, baseSurfaceY, preset);
       }
 
-      // 2. BACKGROUND HD-2D — Layers PNG par biome
-      // Le background procédural est remplacé par 4 plans PNG empilés
-      // geres par SceneLayerManager : background, midground, platform fog, foreground, fx overlay.
+      // 2. BACKGROUND HD-2D - Layers PNG par biome
+      // Nouveau contrat centre midground : back atmosphere, main midground,
+      // ground blend, foreground corners, upper canopy et FX overlay.
       this._layerManager = new SceneLayerManager(
           this._scene,
           sceneryRoot,
@@ -514,8 +535,8 @@ export class CombatScene {
       );
 
       // Surcharges optionnelles exportées depuis le MapEditor.
-      const layerOverrides = mapData?.layerOverrides?.[biome] ?? undefined;
-      this._layerManager.buildLayers(biome, layerOverrides);
+      this._layerManager.buildLayers(biome, sceneLayerInput);
+      const activeLayerPreset = this._layerManager.getActivePreset();
 
       // The PNG layer stack owns the cinematic shafts and foreground frame now.
       // Re-adding the old procedural shafts here would double the haze over units.
@@ -532,9 +553,9 @@ export class CombatScene {
       // 4. MAGICAL FIREFLIES (Lucicles volantes - ambiance d'arène minimale)
       // Legacy depth cards are skipped: the layer PNGs now provide scene depth.
 
-      const dustCount = layerPreset.particleCount;
-      const [pr, pg, pb] = layerPreset.particleColor;
-      const [alphaMin, alphaMax] = layerPreset.particleAlpha;
+      const dustCount = activeLayerPreset.particleCount;
+      const [pr, pg, pb] = activeLayerPreset.particleColor;
+      const [alphaMin, alphaMax] = activeLayerPreset.particleAlpha;
       const fireflyTex = new DynamicTexture('combatFireflyGlowTex', { width: 64, height: 64 }, this._scene, false);
       fireflyTex.hasAlpha = true;
       const fireflyCtx = fireflyTex.getContext() as CanvasRenderingContext2D;

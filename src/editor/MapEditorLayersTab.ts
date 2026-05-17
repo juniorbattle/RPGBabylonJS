@@ -1,70 +1,76 @@
-/**
- * MapEditorLayersTab.ts
- * GPA Tactics HD-2D — Onglet "Layers" du MapEditor
- *
- * Permet de configurer les 4 layers de décor par biome :
- *   - Sélection de l'asset PNG pour chaque layer
- *   - Réglage opacité, émissive, position, scroll FX
- *   - Prévisualisation composite en temps réel (canvas 2D)
- *   - Export des surcharges dans le JSON de carte
- *
- * INTÉGRATION dans MapEditor.ts :
- *   1. Importer MapEditorLayersTab
- *   2. Ajouter l'onglet HTML dans buildHTMLToolbar() après tab-io
- *   3. Instancier dans bindToolbarEvents() :
- *        this.layersTab = new MapEditorLayersTab(this, this.scene, this.manifest);
- */
-
 import { SCENE_LAYER_PRESETS as BIOME_LAYER_PRESETS } from '../rendering/SceneLayerManager';
 import type {
-    SceneLayerAsset as LayerAsset,
-    SceneLayerPreset as BiomeLayerPreset,
+    SceneLayerAlphaKey,
+    SceneLayerAsset,
+    SceneLayerBlendMode,
+    SceneLayerCompositionRole,
+    SceneLayerPreset,
+    SceneLayerStack,
 } from '../rendering/SceneLayerTypes';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+type LegacyLayerKey = 'background' | 'midground' | 'platformBlendFog' | 'foreground';
 
-type LayerKey = 'background' | 'midground' | 'platformBlendFog' | 'foreground' | 'fxOverlay';
-
-interface LayerMeta {
-    key:   LayerKey;
-    label: string;
-    icon:  string;
-    color: string;
-}
-
-const LAYER_META: LayerMeta[] = [
-    { key: 'platformBlendFog', label: 'Platform Fog', icon: 'fog', color: '#123322' },
-    { key: 'background', label: 'Background',  icon: '🌄', color: '#2a3a55' },
-    { key: 'midground',  label: 'Midground',   icon: '🌲', color: '#1e3a28' },
-    { key: 'foreground', label: 'Foreground',  icon: '🪵', color: '#1a1f18' },
-    { key: 'fxOverlay',  label: 'FX Overlay',  icon: '✨', color: '#0a2a18' },
-];
-
-const FOREST_V3_FILES: Record<LayerKey, string> = {
-    background: 'bg_forest_v3_main.png',
-    midground: 'mid_forest_v3_alpha.png',
-    platformBlendFog: 'fx_forest_v3_alpha.png',
-    foreground: 'fore_forest_v3_alpha.png',
-    fxOverlay: 'fx_forest_v3_alpha.png',
+const LEGACY_TO_ROLE: Record<LegacyLayerKey, SceneLayerCompositionRole> = {
+    background: 'backAtmosphere',
+    midground: 'mainMidground',
+    platformBlendFog: 'groundBlend',
+    foreground: 'foregroundCorners',
 };
 
-// ---------------------------------------------------------------------------
-// MapEditorLayersTab
-// ---------------------------------------------------------------------------
+const ROLE_LABELS: Partial<Record<SceneLayerCompositionRole, string>> = {
+    backAtmosphere: 'Back atmosphere',
+    mainMidground: 'Main midground',
+    groundBlend: 'Ground blend',
+    foregroundCorners: 'Foreground corners',
+    upperCanopy: 'Upper canopy',
+    fxOverlay: 'FX overlay',
+};
+
+const DEFAULT_PARTICLE_COLOR: [number, number, number] = [0.4, 1, 0.2];
+const DEFAULT_PARTICLE_ALPHA: [number, number] = [0.06, 0.2];
+
+const cloneLayer = (layer: SceneLayerAsset): SceneLayerAsset => ({
+    ...layer,
+    emissive: [...layer.emissive] as [number, number, number],
+    cameraOpacity: layer.cameraOpacity ? { ...layer.cameraOpacity } : undefined,
+    cameraYOffset: layer.cameraYOffset ? { ...layer.cameraYOffset } : undefined,
+    cameraZOffset: layer.cameraZOffset ? { ...layer.cameraZOffset } : undefined,
+});
+
+const cloneStack = (stack: SceneLayerPreset): SceneLayerPreset => withLegacyAliases({
+    ...stack,
+    layers: stack.layers.map(cloneLayer),
+    particleColor: [...stack.particleColor] as [number, number, number],
+    particleAlpha: [...stack.particleAlpha] as [number, number],
+});
+
+function withLegacyAliases(stack: SceneLayerPreset): SceneLayerPreset {
+    const byRole = (role: SceneLayerCompositionRole): SceneLayerAsset | undefined =>
+        stack.layers.find(layer => layer.compositionRole === role);
+    return {
+        ...stack,
+        backAtmosphere: byRole('backAtmosphere'),
+        mainMidground: byRole('mainMidground'),
+        groundBlend: byRole('groundBlend'),
+        foregroundCorners: byRole('foregroundCorners'),
+        upperCanopy: byRole('upperCanopy'),
+        fxOverlay: byRole('fxOverlay'),
+        background: byRole('backAtmosphere'),
+        midground: byRole('mainMidground'),
+        platformBlendFog: byRole('groundBlend'),
+        foreground: byRole('foregroundCorners'),
+    };
+}
 
 export class MapEditorLayersTab {
     private container: HTMLElement;
     private currentBiome: string;
     private previewCanvas: HTMLCanvasElement | null = null;
-    private overrides: Map<string, Partial<BiomeLayerPreset>> = new Map();
+    private stacks: Map<string, SceneLayerPreset> = new Map();
     private imageCache: Map<string, HTMLImageElement> = new Map();
     private previewToken = 0;
 
-    /** Callbacks vers MapEditor parent */
-    onLayerChange?: (biome: string, overrides: Partial<BiomeLayerPreset>) => void;
-    onExportLayers?: () => Record<string, Partial<BiomeLayerPreset>>;
+    onLayerChange?: (biome: string, stack: SceneLayerPreset) => void;
 
     constructor(
         private editorRef: { currentBiome: string },
@@ -73,587 +79,573 @@ export class MapEditorLayersTab {
     ) {
         this.currentBiome = editorRef.currentBiome;
         this.container = this.buildUI(parentEl);
-        this.refresh(this.currentBiome);
+        this.setBiome(this.currentBiome);
     }
 
-    // ─── HTML principal ────────────────────────────────────────────────────
-
     private buildUI(parent: HTMLElement): HTMLElement {
-        const wrapper = parent;
-        wrapper.innerHTML = '';
-        wrapper.style.padding = '10px 13px';
-
-        wrapper.innerHTML = `
+        parent.innerHTML = '';
+        parent.style.padding = '10px 13px';
+        parent.innerHTML = `
         <style>
+        #tab-layers .layer-toolbar {
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:6px;
+            margin:8px 0 10px;
+        }
+        #tab-layers .layer-btn {
+            border:1px solid rgba(255,255,255,0.08);
+            border-radius:5px;
+            background:rgba(255,255,255,0.06);
+            color:#d6e2ee;
+            padding:7px 8px;
+            font-size:10px;
+            font-weight:800;
+            cursor:pointer;
+        }
+        #tab-layers .layer-btn.primary { background:#18351f;color:#74e8a0; }
+        #tab-layers .layer-btn.danger { color:#ff9f9f; }
         #tab-layers .layer-card {
-            background: rgba(255,255,255,0.04);
-            border-radius: 6px;
-            margin-bottom: 8px;
-            overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.06);
+            background:rgba(255,255,255,0.045);
+            border:1px solid rgba(255,255,255,0.07);
+            border-radius:7px;
+            margin-bottom:9px;
+            overflow:hidden;
         }
         #tab-layers .layer-header {
-            display: flex;
-            align-items: center;
-            padding: 7px 10px;
-            cursor: pointer;
-            user-select: none;
-            gap: 8px;
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: .06em;
+            display:grid;
+            grid-template-columns:auto auto 1fr auto auto auto auto;
+            align-items:center;
+            gap:6px;
+            padding:8px;
+            background:rgba(3,8,14,0.48);
         }
-        #tab-layers .layer-header:hover { background: rgba(255,255,255,0.04); }
+        #tab-layers .layer-name {
+            min-width:0;
+            background:rgba(255,255,255,0.06);
+            color:#e6eef7;
+            border:1px solid rgba(255,255,255,0.08);
+            border-radius:4px;
+            padding:4px 6px;
+            font-size:10px;
+            font-weight:800;
+        }
+        #tab-layers .layer-thumb {
+            width:38px;
+            height:22px;
+            object-fit:cover;
+            border-radius:4px;
+            border:1px solid rgba(255,255,255,0.12);
+            background:#070a10;
+        }
+        #tab-layers .icon-btn {
+            width:24px;
+            height:24px;
+            border:1px solid rgba(255,255,255,0.08);
+            border-radius:5px;
+            background:rgba(255,255,255,0.06);
+            color:#c9d6e4;
+            cursor:pointer;
+            font-size:11px;
+            font-weight:900;
+        }
         #tab-layers .layer-body {
-            padding: 8px 10px 10px;
-            border-top: 1px solid rgba(255,255,255,0.05);
+            padding:8px 10px 10px;
+            border-top:1px solid rgba(255,255,255,0.05);
         }
         #tab-layers .lrow {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-bottom: 6px;
+            display:flex;
+            align-items:center;
+            gap:6px;
+            margin-bottom:6px;
         }
         #tab-layers .lrow label {
-            flex: 0 0 68px;
-            font-size: 9px;
-            color: #6a7a90;
-            text-transform: uppercase;
-            letter-spacing: .08em;
+            flex:0 0 72px;
+            font-size:9px;
+            color:#7d8ca1;
+            text-transform:uppercase;
+            letter-spacing:.08em;
+            font-weight:800;
         }
         #tab-layers .lrow select,
+        #tab-layers .lrow input[type=text],
         #tab-layers .lrow input[type=number] {
-            flex: 1;
-            background: rgba(255,255,255,0.06);
-            color: #c4ccd6;
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 4px;
-            padding: 3px 6px;
-            font-size: 10px;
+            flex:1;
+            min-width:0;
+            background:rgba(255,255,255,0.06);
+            color:#c4ccd6;
+            border:1px solid rgba(255,255,255,0.08);
+            border-radius:4px;
+            padding:4px 6px;
+            font-size:10px;
         }
         #tab-layers input[type=range] {
-            flex: 1;
-            -webkit-appearance: none;
-            height: 3px;
-            background: rgba(255,255,255,0.12);
-            border-radius: 2px;
-            outline: none;
+            flex:1;
+            -webkit-appearance:none;
+            height:3px;
+            background:rgba(255,255,255,0.12);
+            border-radius:2px;
+            outline:none;
         }
         #tab-layers input[type=range]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 10px;
-            height: 10px;
-            background: #5a8fcc;
-            border-radius: 50%;
-            cursor: pointer;
+            -webkit-appearance:none;
+            width:10px;
+            height:10px;
+            background:#5a8fcc;
+            border-radius:50%;
+            cursor:pointer;
         }
         #tab-layers .val {
-            min-width: 34px;
-            text-align: right;
-            font-size: 9px;
-            color: #dce8f4;
-            font-weight: 700;
+            min-width:38px;
+            text-align:right;
+            font-size:9px;
+            color:#dce8f4;
+            font-weight:800;
         }
-        #tab-layers .layer-preview-strip {
-            width: 100%;
-            height: 6px;
-            border-radius: 3px;
-            margin-top: 4px;
+        #tab-layers .layer-status {
+            background:rgba(2,6,12,0.58);
+            border:1px solid rgba(255,255,255,0.07);
+            border-radius:6px;
+            padding:8px 10px;
+            margin-bottom:10px;
+            font-size:9px;
+            color:#8fa0b7;
+            line-height:1.55;
         }
-        #tab-layers .scroll-row { display: flex; gap: 6px; }
-        #tab-layers .collapse-arrow { margin-left: auto; font-size: 10px; opacity: 0.5; }
-        #tab-layers .layer-thumb {
-            width: 36px;
-            height: 22px;
-            border-radius: 3px;
-            border: 1px solid rgba(255,255,255,0.12);
-            object-fit: cover;
-            background: #0a0c12;
+        #tab-layers .layer-preview-wrap {
+            margin-bottom:10px;
         }
-        #tab-layers .layer-stage-card {
-            background: rgba(2,6,12,0.56);
-            border: 1px solid rgba(214,179,90,0.22);
-            border-radius: 6px;
-            padding: 8px 10px;
-            margin-bottom: 10px;
-        }
-        #tab-layers details {
-            border-top: 1px solid rgba(255,255,255,0.06);
-            margin-top: 8px;
-            padding-top: 7px;
-        }
-        #tab-layers summary {
-            cursor: pointer;
-            color: #8da0b8;
-            font-size: 10px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .08em;
-        }
-        #tab-layers .mini-preview-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 6px;
-            margin-top: 8px;
-        }
-        #tab-layers .contract-status {
-            background: rgba(2,6,12,0.58);
-            border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 6px;
-            padding: 8px 10px;
-            margin-bottom: 10px;
-        }
-        #tab-layers .contract-line {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            font-size: 9px;
-            color: #7f8da0;
-            margin-top: 5px;
-        }
-        #tab-layers .contract-line strong {
-            color: #b8c8dc;
-            font-size: 9px;
-            letter-spacing: .04em;
-        }
-        #tab-layers .contract-badge {
-            border-radius: 999px;
-            padding: 1px 7px;
-            font-weight: 900;
-            font-size: 8px;
-            letter-spacing: .05em;
-            white-space: nowrap;
-        }
-        #tab-layers .contract-badge.ok {
-            background: rgba(42,220,125,0.14);
-            color: #63e8a2;
-            border: 1px solid rgba(99,232,162,0.22);
-        }
-        #tab-layers .contract-badge.warn {
-            background: rgba(255,190,80,0.12);
-            color: #f3c46a;
-            border: 1px solid rgba(243,196,106,0.22);
-        }
-        #tab-layers .contract-badge.bad {
-            background: rgba(255,95,95,0.12);
-            color: #ff8a8a;
-            border: 1px solid rgba(255,138,138,0.22);
+        #tab-layers .layer-preview-title {
+            font-size:9px;
+            color:#4a6a8a;
+            letter-spacing:.1em;
+            text-transform:uppercase;
+            margin-bottom:5px;
+            font-weight:800;
         }
         </style>
 
-        <div class="layer-stage-card">
-            <div class="lrow">
+        <div class="layer-status">
+            <div class="lrow" style="margin-bottom:0;">
                 <label>Biome</label>
-                <select id="biomeSelect" style="flex:2;">
-                    ${Object.keys(BIOME_LAYER_PRESETS).map(b => `<option value="${b}" ${b === this.currentBiome ? 'selected' : ''}>${b}</option>`).join('')}
+                <select id="layerBiomeSelect">
+                    ${Object.keys(BIOME_LAYER_PRESETS).map(b => `<option value="${b}">${b}</option>`).join('')}
                 </select>
             </div>
-            <button id="btnApplyForestV3" class="btn" style="background:#1c3423;color:#76e8a2;width:100%;padding:7px 0;margin-top:4px;">
-                Appliquer preset forest
-            </button>
-            <details>
-                <summary>Reglages secondaires</summary>
-                <div style="margin-top:8px;">
-                    <div class="lrow"><label>Densite</label>
-                        <input type="range" id="procDensity" min="0.1" max="2.0" step="0.05" value="${this.getEditorNumber('procDensity', 0.7)}"/>
-                        <span class="val" id="valProcDensity">${this.getEditorNumber('procDensity', 0.7).toFixed(2)}</span>
-                    </div>
-                    <div class="lrow"><label>Prop seed</label>
-                        <input type="number" id="procSeedInput" value="${this.getEditorNumber('procSeed', 42)}" min="0" max="99999" style="width:58px;"/>
-                        <button id="btnRS" class="btn" style="background:#102030;color:#60a0e0;padding:3px 7px;font-size:11px;">Rnd</button>
-                    </div>
-                    <button id="btnProcRebuild" class="btn" style="background:#0f3520;color:#50d880;width:100%;padding:7px 0;margin-top:4px;">Generer props secondaires</button>
-                </div>
-            </details>
+            <div style="margin-top:7px;">
+                Stack libre de layers. Tous les plans sont non-pickables pour proteger les clics grille.
+            </div>
         </div>
 
-        <!-- Preview composite -->
-        <div style="margin-bottom:10px;">
-            <div style="font-size:9px;color:#4a6a8a;letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px;font-weight:700;">Preview rapide</div>
-            <canvas id="layersPreviewCanvas" width="320" height="150"
+        <div class="layer-toolbar">
+            <button id="btnAddSceneLayer" class="layer-btn primary">+ Ajouter layer</button>
+            <button id="btnResetSceneLayers" class="layer-btn">Preset biome</button>
+        </div>
+
+        <div class="layer-preview-wrap">
+            <div class="layer-preview-title">Preview rapide</div>
+            <canvas id="layersPreviewCanvas" width="320" height="170"
                 style="width:100%;border-radius:5px;border:1px solid rgba(255,255,255,.07);background:#0a0c14;display:block;"></canvas>
         </div>
 
-        <div class="contract-status">
-            <div style="font-size:9px;color:#d6b35a;letter-spacing:.12em;text-transform:uppercase;font-weight:900;">Stack layers</div>
-            <div id="layerContractStatus" style="margin-top:4px;"></div>
-        </div>
-
-        <!-- Cards des 4 layers -->
+        <div id="layersStackStatus" class="layer-status"></div>
         <div id="layers-cards-container"></div>
-
-        <!-- Export -->
-        <div style="margin-top:10px;">
-            <button id="btnExportLayers" style="
-                width:100%;padding:8px 0;border:none;border-radius:5px;
-                background:#1a3a1a;color:#70e870;font-size:11px;font-weight:700;cursor:pointer;">
-                💾 Exporter surcharges layers
-            </button>
-            <div style="font-size:9px;color:#4a5a6a;margin-top:5px;line-height:1.5;">
-                Les surcharges sont injectées dans <b>layerOverrides</b> du JSON de carte.
-            </div>
-        </div>
         `;
 
-        // On récupère le canvas
-        this.previewCanvas = wrapper.querySelector('#layersPreviewCanvas') as HTMLCanvasElement;
-        wrapper.querySelector('#btnExportLayers')!.addEventListener('click', () => this.exportOverrides());
-        wrapper.querySelector('#biomeSelect')?.addEventListener('change', (evt) => {
+        this.previewCanvas = parent.querySelector('#layersPreviewCanvas') as HTMLCanvasElement;
+        parent.querySelector('#layerBiomeSelect')?.addEventListener('change', (evt) => {
             const biome = (evt.target as HTMLSelectElement).value;
             this.editorRef.currentBiome = biome;
             this.setBiome(biome);
-            this.onLayerChange?.(biome, this.overrides.get(biome) ?? {});
+            this.commitCurrentStack(false);
         });
-        wrapper.querySelector('#btnApplyForestV3')?.addEventListener('click', () => this.applyForestV3Preset());
-
-        return wrapper;
+        parent.querySelector('#btnAddSceneLayer')?.addEventListener('click', () => this.addLayer());
+        parent.querySelector('#btnResetSceneLayers')?.addEventListener('click', () => this.resetBiomePreset());
+        return parent;
     }
 
-    private getEditorNumber(key: string, fallback: number): number {
-        const value = (this.editorRef as any)[key];
-        return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-    }
-
-    // ─── Refresh — recharge les cards pour le biome actif ─────────────────
-
-    refresh(biome: string): void {
+    setBiome(biome: string): void {
         this.currentBiome = biome;
-        const container = this.container.querySelector('#layers-cards-container') as HTMLElement;
-        if (!container) return;
-        container.innerHTML = '';
+        const select = this.container.querySelector('#layerBiomeSelect') as HTMLSelectElement | null;
+        if (select) select.value = biome;
+        this.ensureStack(biome);
+        this.renderLayerList();
+    }
 
-        const base = BIOME_LAYER_PRESETS[biome] ?? BIOME_LAYER_PRESETS['forest'];
-        const existing = this.overrides.get(biome) ?? {};
-        const preset: BiomeLayerPreset = {
-            ...base,
-            ...existing,
-            background: { ...base.background, ...(existing.background ?? {}) },
-            midground:  { ...base.midground,  ...(existing.midground  ?? {}) },
-            platformBlendFog: { ...base.platformBlendFog, ...(existing.platformBlendFog ?? {}) },
-            foreground: { ...base.foreground, ...(existing.foreground ?? {}) },
-            fxOverlay:  { ...base.fxOverlay,  ...(existing.fxOverlay  ?? {}) },
-        };
+    getSceneLayersForBiome(biome: string): SceneLayerPreset {
+        return cloneStack(this.ensureStack(biome));
+    }
 
-        for (const meta of LAYER_META) {
-            container.appendChild(this.buildLayerCard(meta, preset[meta.key], biome));
+    getSceneLayersForExport(): SceneLayerPreset {
+        return this.getSceneLayersForBiome(this.currentBiome);
+    }
+
+    getOverridesForBiome(biome: string): SceneLayerPreset | undefined {
+        return this.getSceneLayersForBiome(biome);
+    }
+
+    getAllOverrides(): Record<string, SceneLayerPreset> {
+        const out: Record<string, SceneLayerPreset> = {};
+        for (const [biome, stack] of this.stacks) out[biome] = cloneStack(stack);
+        return out;
+    }
+
+    loadSceneLayersFromJSON(data: SceneLayerStack): void {
+        const biome = data.biome ?? this.currentBiome;
+        this.stacks.set(biome, this.normalizeStack(data, biome));
+        this.currentBiome = biome;
+        this.editorRef.currentBiome = biome;
+        this.setBiome(biome);
+    }
+
+    loadOverridesFromJSON(data: Record<string, Partial<SceneLayerPreset>>): void {
+        for (const [biome, override] of Object.entries(data)) {
+            this.stacks.set(biome, this.normalizeImportedStack(override, biome));
+        }
+        this.setBiome(this.currentBiome);
+    }
+
+    private ensureStack(biome: string): SceneLayerPreset {
+        const existing = this.stacks.get(biome);
+        if (existing) return existing;
+        const base = BIOME_LAYER_PRESETS[biome] ?? BIOME_LAYER_PRESETS.forest;
+        const clone = cloneStack(base);
+        this.stacks.set(biome, clone);
+        return clone;
+    }
+
+    private normalizeStack(raw: Partial<SceneLayerStack>, biome: string): SceneLayerPreset {
+        const base = BIOME_LAYER_PRESETS[biome] ?? BIOME_LAYER_PRESETS.forest;
+        const layers = Array.isArray(raw.layers) && raw.layers.length
+            ? raw.layers.map((layer, index) => this.fillLayerDefaults(layer as Partial<SceneLayerAsset>, index))
+            : base.layers.map(cloneLayer);
+        return withLegacyAliases({
+            id: raw.id ?? `${biome}_dynamic_layers`,
+            biome,
+            layers: this.sortAndRenumber(layers),
+            particleColor: raw.particleColor ?? base.particleColor ?? DEFAULT_PARTICLE_COLOR,
+            particleCount: raw.particleCount ?? base.particleCount ?? 18,
+            particleAlpha: raw.particleAlpha ?? base.particleAlpha ?? DEFAULT_PARTICLE_ALPHA,
+        });
+    }
+
+    private normalizeImportedStack(raw: Partial<SceneLayerPreset>, biome: string): SceneLayerPreset {
+        if (Array.isArray(raw.layers)) return this.normalizeStack(raw, biome);
+
+        const base = cloneStack(BIOME_LAYER_PRESETS[biome] ?? BIOME_LAYER_PRESETS.forest);
+        const layers = base.layers.map(layer => {
+            const role = layer.compositionRole;
+            if (!role) return layer;
+            const legacy = this.findLegacyOverride(raw, role);
+            return legacy ? this.fillLayerDefaults({ ...layer, ...legacy }, layer.order) : layer;
+        });
+
+        for (const [legacyKey, role] of Object.entries(LEGACY_TO_ROLE) as Array<[LegacyLayerKey, SceneLayerCompositionRole]>) {
+            const legacy = raw[legacyKey] as Partial<SceneLayerAsset> | undefined;
+            if (!legacy || layers.some(layer => layer.compositionRole === role)) continue;
+            layers.push(this.fillLayerDefaults({
+                ...legacy,
+                id: roleToId(role),
+                name: ROLE_LABELS[role] ?? role,
+                order: defaultOrderForRole(role),
+                compositionRole: role,
+            }, layers.length));
         }
 
-        this.refreshPreview(preset);
-        this.refreshContractStatus(preset);
+        return withLegacyAliases({
+            ...base,
+            ...raw,
+            biome,
+            layers: this.sortAndRenumber(layers),
+        } as SceneLayerPreset);
     }
 
-    // ─── Card d'un layer ───────────────────────────────────────────────────
+    private findLegacyOverride(raw: Partial<SceneLayerPreset>, role: SceneLayerCompositionRole): Partial<SceneLayerAsset> | undefined {
+        const direct = raw[role] as Partial<SceneLayerAsset> | undefined;
+        const legacyKey = (Object.entries(LEGACY_TO_ROLE) as Array<[LegacyLayerKey, SceneLayerCompositionRole]>)
+            .find(([, mappedRole]) => mappedRole === role)?.[0];
+        const legacy = legacyKey ? raw[legacyKey] as Partial<SceneLayerAsset> | undefined : undefined;
+        if (!direct && !legacy) return undefined;
+        return { ...(legacy ?? {}), ...(direct ?? {}) };
+    }
 
-    private buildLayerCard(meta: LayerMeta, cfg: LayerAsset, biome: string): HTMLElement {
+    private fillLayerDefaults(raw: Partial<SceneLayerAsset>, index: number): SceneLayerAsset {
+        return {
+            id: raw.id ?? `scene_layer_${Date.now()}_${index}`,
+            name: raw.name ?? (raw.compositionRole ? (ROLE_LABELS[raw.compositionRole] ?? String(raw.compositionRole)) : `Layer ${index + 1}`),
+            enabled: raw.enabled ?? true,
+            order: raw.order ?? index * 10,
+            file: raw.file ?? this.availableFiles[0] ?? null,
+            opacity: raw.opacity ?? 1,
+            blendMode: raw.blendMode ?? 'alpha',
+            emissive: (raw.emissive ?? [1, 1, 1]) as [number, number, number],
+            xOffset: raw.xOffset ?? 0,
+            yOffset: raw.yOffset ?? 0,
+            zOffset: raw.zOffset ?? 0,
+            widthScale: raw.widthScale ?? 1,
+            height: raw.height ?? 36,
+            billboard: raw.billboard ?? false,
+            renderGroup: raw.renderGroup ?? 0,
+            alphaKey: raw.alphaKey ?? 'texture',
+            scrollSpeedX: raw.scrollSpeedX ?? 0,
+            scrollSpeedY: raw.scrollSpeedY ?? 0,
+            uvScaleX: raw.uvScaleX,
+            uvScaleY: raw.uvScaleY,
+            uvOffsetX: raw.uvOffsetX,
+            uvOffsetY: raw.uvOffsetY,
+            cameraOpacity: raw.cameraOpacity ? { ...raw.cameraOpacity } : undefined,
+            cameraYOffset: raw.cameraYOffset ? { ...raw.cameraYOffset } : undefined,
+            cameraZOffset: raw.cameraZOffset ? { ...raw.cameraZOffset } : undefined,
+            parallaxStrength: raw.parallaxStrength ?? 0,
+            stageFit: raw.stageFit,
+            compositionRole: raw.compositionRole,
+        };
+    }
+
+    private sortAndRenumber(layers: SceneLayerAsset[]): SceneLayerAsset[] {
+        return [...layers]
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+            .map((layer, index) => ({ ...layer, order: index * 10 }));
+    }
+
+    private renderLayerList(): void {
+        const stack = this.ensureStack(this.currentBiome);
+        const host = this.container.querySelector('#layers-cards-container') as HTMLElement | null;
+        if (!host) return;
+        host.innerHTML = '';
+        stack.layers.forEach((layer, index) => host.appendChild(this.buildLayerCard(layer, index)));
+        this.refreshPreview(stack);
+        this.refreshStatus(stack);
+    }
+
+    private buildLayerCard(layer: SceneLayerAsset, index: number): HTMLElement {
         const card = document.createElement('div');
         card.className = 'layer-card';
-        card.dataset.layerKey = meta.key;
-
-        // Thumbnail (si fichier existe)
-        const thumbSrc = cfg.file ? `/assets/backgrounds/${cfg.file}` : '';
-        const thumbHtml = thumbSrc
-            ? `<img class="layer-thumb" src="${thumbSrc}" onerror="this.style.display='none'"/>`
-            : `<div class="layer-thumb" style="display:flex;align-items:center;justify-content:center;color:#3a4a5a;font-size:9px;">∅</div>`;
-
+        card.dataset.index = String(index);
+        const thumbSrc = layer.file ? `/assets/backgrounds/${layer.file}` : '';
         card.innerHTML = `
-        <div class="layer-header" style="background:${meta.color}22;">
-            <span>${meta.icon}</span>
-            ${thumbHtml}
-            <span style="color:#c4d4e4;">${meta.label}</span>
-            <span class="collapse-arrow">▼</span>
-        </div>
-        <div class="layer-body">
-            <!-- Asset -->
-            <div class="lrow">
-                <label>Asset</label>
-                <select class="layer-file-select">
-                    <option value="">(aucun)</option>
-                    ${this.availableFiles.map(f =>
-                        `<option value="${f}" ${f === cfg.file ? 'selected' : ''}>${f}</option>`
-                    ).join('')}
-                </select>
+            <div class="layer-header">
+                <input class="layer-enabled" type="checkbox" ${layer.enabled ? 'checked' : ''} title="Activer le layer"/>
+                <img class="layer-thumb" src="${thumbSrc}" onerror="this.style.opacity='0.2'"/>
+                <input class="layer-name" type="text" value="${escapeHtml(layer.name)}"/>
+                <button class="icon-btn layer-up" title="Monter">↑</button>
+                <button class="icon-btn layer-down" title="Descendre">↓</button>
+                <button class="icon-btn layer-copy" title="Dupliquer">⧉</button>
+                <button class="icon-btn layer-delete" title="Supprimer">×</button>
             </div>
-            <!-- Opacité -->
-            <div class="lrow">
-                <label>Opacité</label>
-                <input type="range" class="layer-opacity" min="0" max="1" step="0.01" value="${cfg.opacity}"/>
-                <span class="val layer-opacity-val">${(cfg.opacity * 100).toFixed(0)}%</span>
-            </div>
-            <!-- Émissive R G B -->
-            <div class="lrow">
-                <label>Émissive R</label>
-                <input type="range" class="layer-emissive-r" min="0" max="1" step="0.01" value="${cfg.emissive[0]}"/>
-                <span class="val layer-emissive-r-val">${cfg.emissive[0].toFixed(2)}</span>
-            </div>
-            <div class="lrow">
-                <label>Émissive G</label>
-                <input type="range" class="layer-emissive-g" min="0" max="1" step="0.01" value="${cfg.emissive[1]}"/>
-                <span class="val layer-emissive-g-val">${cfg.emissive[1].toFixed(2)}</span>
-            </div>
-            <div class="lrow">
-                <label>Émissive B</label>
-                <input type="range" class="layer-emissive-b" min="0" max="1" step="0.01" value="${cfg.emissive[2]}"/>
-                <span class="val layer-emissive-b-val">${cfg.emissive[2].toFixed(2)}</span>
-            </div>
-            <!-- Position -->
-            <div class="lrow">
-                <label>Offset Y</label>
-                <input type="range" class="layer-y" min="-5" max="40" step="0.5" value="${cfg.yOffset}"/>
-                <span class="val layer-y-val">${cfg.yOffset.toFixed(1)}</span>
-            </div>
-            <div class="lrow">
-                <label>Offset Z</label>
-                <input type="range" class="layer-z" min="-20" max="80" step="0.5" value="${cfg.zOffset}"/>
-                <span class="val layer-z-val">${cfg.zOffset.toFixed(1)}</span>
-            </div>
-            <!-- Hauteur -->
-            <div class="lrow">
-                <label>Hauteur</label>
-                <input type="range" class="layer-height" min="5" max="120" step="1" value="${cfg.height}"/>
-                <span class="val layer-height-val">${cfg.height.toFixed(0)}</span>
-            </div>
-            <!-- Scale W -->
-            <div class="lrow">
-                <label>Largeur ×</label>
-                <input type="range" class="layer-wscale" min="0.5" max="6.0" step="0.05" value="${cfg.widthScale}"/>
-                <span class="val layer-wscale-val">${cfg.widthScale.toFixed(2)}</span>
-            </div>
-            <!-- Scroll FX -->
-            <div class="scroll-row">
-                <div class="lrow" style="flex:1;">
-                    <label>Scroll X</label>
-                    <input type="range" class="layer-scrollx" min="-0.02" max="0.02" step="0.001" value="${cfg.scrollSpeedX ?? 0}"/>
-                    <span class="val layer-scrollx-val">${(cfg.scrollSpeedX ?? 0).toFixed(3)}</span>
-                </div>
-                <div class="lrow" style="flex:1;">
-                    <label>Scroll Y</label>
-                    <input type="range" class="layer-scrolly" min="-0.02" max="0.02" step="0.001" value="${cfg.scrollSpeedY ?? 0}"/>
-                    <span class="val layer-scrolly-val">${(cfg.scrollSpeedY ?? 0).toFixed(3)}</span>
+            <div class="layer-body">
+                ${this.selectControl('Asset', 'layer-file', layer.file ?? '', this.fileOptions(layer.file))}
+                ${this.selectControl('Alpha key', 'layer-alpha-key', layer.alphaKey ?? 'texture', ['texture', 'white', 'magenta', 'black', 'luminance', 'none'])}
+                ${this.selectControl('Blend', 'layer-blend', layer.blendMode, ['alpha', 'additive', 'screen', 'multiply'])}
+                ${this.rangeControl('Opacite', 'layer-opacity', 0, 1, 0.01, layer.opacity, 'percent')}
+                ${this.rangeControl('Front alpha', 'layer-front-alpha', 0, 1, 0.01, layer.cameraOpacity?.front ?? layer.opacity, 'percent')}
+                ${this.rangeControl('Overview', 'layer-overview-alpha', 0, 1, 0.01, layer.cameraOpacity?.overview ?? layer.opacity, 'percent')}
+                ${this.rangeControl('Offset X', 'layer-x', -120, 120, 0.5, layer.xOffset, 'float')}
+                ${this.rangeControl('Offset Y', 'layer-y', -140, 140, 0.5, layer.yOffset, 'float')}
+                ${this.rangeControl('Offset Z', 'layer-z', -160, 220, 0.5, layer.zOffset, 'float')}
+                ${this.rangeControl('Hauteur', 'layer-height', 1, 240, 1, layer.height, 'int')}
+                ${this.rangeControl('Largeur x', 'layer-width', 0.05, 14, 0.05, layer.widthScale, 'scale')}
+                ${this.rangeControl('Parallax', 'layer-parallax', 0, 1, 0.01, layer.parallaxStrength ?? 0, 'scale')}
+                ${this.rangeControl('Scroll X', 'layer-scroll-x', -0.08, 0.08, 0.001, layer.scrollSpeedX ?? 0, 'scroll')}
+                ${this.rangeControl('Scroll Y', 'layer-scroll-y', -0.08, 0.08, 0.001, layer.scrollSpeedY ?? 0, 'scroll')}
+                ${this.rangeControl('Emissive R', 'layer-r', 0, 2, 0.01, layer.emissive[0], 'scale')}
+                ${this.rangeControl('Emissive G', 'layer-g', 0, 2, 0.01, layer.emissive[1], 'scale')}
+                ${this.rangeControl('Emissive B', 'layer-b', 0, 2, 0.01, layer.emissive[2], 'scale')}
+                <div class="lrow">
+                    <label>Render</label>
+                    <input class="layer-render" type="number" min="0" max="3" step="1" value="${layer.renderGroup}"/>
                 </div>
             </div>
-            <!-- Blend mode -->
-            <div class="lrow">
-                <label>Blend</label>
-                <select class="layer-blend">
-                    <option value="alpha"    ${cfg.blendMode === 'alpha'    ? 'selected' : ''}>Alpha</option>
-                    <option value="additive" ${cfg.blendMode === 'additive' ? 'selected' : ''}>Additive</option>
-                    <option value="screen"   ${cfg.blendMode === 'screen'   ? 'selected' : ''}>Screen</option>
-                </select>
-            </div>
-            <!-- Strip couleur -->
-            <div class="layer-preview-strip" style="background:linear-gradient(90deg,
-                rgba(${Math.round(cfg.emissive[0]*255)},${Math.round(cfg.emissive[1]*255)},${Math.round(cfg.emissive[2]*255)},${cfg.opacity}),
-                transparent);"></div>
-        </div>
         `;
 
-        // Toggle collapse
-        const header = card.querySelector('.layer-header') as HTMLElement;
-        const body   = card.querySelector('.layer-body')   as HTMLElement;
-        body.style.display = 'block';
-        header.addEventListener('click', () => {
-            body.style.display = body.style.display === 'none' ? 'block' : 'none';
-            const arrow = header.querySelector('.collapse-arrow') as HTMLElement;
-            arrow.textContent = body.style.display === 'none' ? '▶' : '▼';
+        card.querySelector('.layer-up')?.addEventListener('click', () => this.moveLayer(index, -1));
+        card.querySelector('.layer-down')?.addEventListener('click', () => this.moveLayer(index, 1));
+        card.querySelector('.layer-copy')?.addEventListener('click', () => this.duplicateLayer(index));
+        card.querySelector('.layer-delete')?.addEventListener('click', () => this.deleteLayer(index));
+        card.querySelectorAll('input,select').forEach(el => {
+            el.addEventListener('input', () => this.readCard(index, card));
+            el.addEventListener('change', () => this.readCard(index, card));
         });
-
-        // Bind all controls
-        this.bindCardControls(card, meta.key as LayerKey, biome);
-
         return card;
     }
 
-    private bindCardControls(card: HTMLElement, key: LayerKey, biome: string): void {
-        const q = (sel: string) => card.querySelector(sel) as HTMLInputElement | HTMLSelectElement | null;
-        const update = () => this.readAndApply(card, key, biome);
+    private fileOptions(selected: string | null): string[] {
+        const files = [...this.availableFiles];
+        if (selected && !files.includes(selected)) files.unshift(selected);
+        return ['', ...files];
+    }
 
-        // Slider feedback
-        const sliders: [string, string][] = [
-            ['.layer-opacity', '.layer-opacity-val'],
-            ['.layer-emissive-r', '.layer-emissive-r-val'],
-            ['.layer-emissive-g', '.layer-emissive-g-val'],
-            ['.layer-emissive-b', '.layer-emissive-b-val'],
-            ['.layer-y', '.layer-y-val'],
-            ['.layer-z', '.layer-z-val'],
-            ['.layer-height', '.layer-height-val'],
-            ['.layer-wscale', '.layer-wscale-val'],
-            ['.layer-scrollx', '.layer-scrollx-val'],
-            ['.layer-scrolly', '.layer-scrolly-val'],
+    private selectControl(label: string, cls: string, value: string, options: string[]): string {
+        return `
+            <div class="lrow">
+                <label>${label}</label>
+                <select class="${cls}">
+                    ${options.map(option => `<option value="${option}" ${option === value ? 'selected' : ''}>${option || '(aucun)'}</option>`).join('')}
+                </select>
+            </div>
+        `;
+    }
+
+    private rangeControl(label: string, cls: string, min: number, max: number, step: number, value: number, format: string): string {
+        return `
+            <div class="lrow">
+                <label>${label}</label>
+                <input class="${cls}" type="range" min="${min}" max="${max}" step="${step}" value="${value}"/>
+                <span class="val" data-format="${format}">${this.formatValue(value, format)}</span>
+            </div>
+        `;
+    }
+
+    private readCard(index: number, card: HTMLElement): void {
+        const stack = this.ensureStack(this.currentBiome);
+        const current = stack.layers[index];
+        if (!current) return;
+
+        const getInput = (cls: string): HTMLInputElement => card.querySelector(`.${cls}`) as HTMLInputElement;
+        const getSelect = (cls: string): HTMLSelectElement => card.querySelector(`.${cls}`) as HTMLSelectElement;
+        const numberValue = (cls: string, fallback: number): number => {
+            const raw = parseFloat(getInput(cls)?.value ?? String(fallback));
+            return Number.isFinite(raw) ? raw : fallback;
+        };
+
+        current.enabled = getInput('layer-enabled')?.checked ?? true;
+        current.name = getInput('layer-name')?.value.trim() || current.name;
+        current.file = getSelect('layer-file')?.value || null;
+        current.alphaKey = (getSelect('layer-alpha-key')?.value || 'texture') as SceneLayerAlphaKey;
+        current.blendMode = (getSelect('layer-blend')?.value || 'alpha') as SceneLayerBlendMode;
+        current.opacity = numberValue('layer-opacity', current.opacity);
+        current.cameraOpacity = {
+            front: numberValue('layer-front-alpha', current.cameraOpacity?.front ?? current.opacity),
+            overview: numberValue('layer-overview-alpha', current.cameraOpacity?.overview ?? current.opacity),
+        };
+        current.xOffset = numberValue('layer-x', current.xOffset);
+        current.yOffset = numberValue('layer-y', current.yOffset);
+        current.zOffset = numberValue('layer-z', current.zOffset);
+        current.height = numberValue('layer-height', current.height);
+        current.widthScale = numberValue('layer-width', current.widthScale);
+        current.parallaxStrength = numberValue('layer-parallax', current.parallaxStrength ?? 0);
+        current.scrollSpeedX = numberValue('layer-scroll-x', current.scrollSpeedX ?? 0);
+        current.scrollSpeedY = numberValue('layer-scroll-y', current.scrollSpeedY ?? 0);
+        current.emissive = [
+            numberValue('layer-r', current.emissive[0]),
+            numberValue('layer-g', current.emissive[1]),
+            numberValue('layer-b', current.emissive[2]),
         ];
-        for (const [sliderSel, valSel] of sliders) {
-            const slider = q(sliderSel);
-            const val    = card.querySelector(valSel) as HTMLElement | null;
-            if (slider && val) {
-                slider.addEventListener('input', () => {
-                    val.textContent = this.formatSliderValue(sliderSel, parseFloat((slider as HTMLInputElement).value));
-                    update();
-                });
-            }
-        }
-        q('.layer-file-select')?.addEventListener('change', () => {
-            const thumb = card.querySelector('.layer-thumb') as HTMLImageElement;
-            const file = (q('.layer-file-select') as HTMLSelectElement).value;
-            if (thumb && thumb.tagName === 'IMG') {
-                thumb.src = file ? `/assets/backgrounds/${file}` : '';
-            }
-            update();
+        current.renderGroup = Math.max(0, Math.round(numberValue('layer-render', current.renderGroup)));
+
+        const thumb = card.querySelector('.layer-thumb') as HTMLImageElement | null;
+        if (thumb) thumb.src = current.file ? `/assets/backgrounds/${current.file}` : '';
+        card.querySelectorAll('.val').forEach(span => {
+            const input = span.previousElementSibling as HTMLInputElement | null;
+            if (input) span.textContent = this.formatValue(parseFloat(input.value), span.getAttribute('data-format') ?? 'float');
         });
-        q('.layer-blend')?.addEventListener('change', update);
+
+        this.commitCurrentStack();
     }
 
-    private formatSliderValue(sliderSel: string, value: number): string {
-        if (sliderSel.includes('opacity')) return `${Math.round(value * 100)}%`;
-        if (sliderSel.includes('height')) return value.toFixed(0);
-        if (sliderSel.includes('wscale')) return value.toFixed(2);
-        if (sliderSel.includes('scroll')) return value.toFixed(3);
-        if (sliderSel.includes('emissive')) return value.toFixed(2);
-        return value.toFixed(1);
+    private addLayer(): void {
+        const stack = this.ensureStack(this.currentBiome);
+        stack.layers.push(this.fillLayerDefaults({
+            id: `custom_layer_${Date.now()}`,
+            name: `Layer ${stack.layers.length + 1}`,
+            order: stack.layers.length * 10,
+            file: this.availableFiles[0] ?? null,
+        }, stack.layers.length));
+        stack.layers = this.sortAndRenumber(stack.layers);
+        this.commitCurrentStack();
+        this.renderLayerList();
     }
 
-    private readAndApply(card: HTMLElement, key: LayerKey, biome: string): void {
-        const q = (sel: string): HTMLInputElement => card.querySelector(sel) as HTMLInputElement;
-        const qSelect = (sel: string): HTMLSelectElement => card.querySelector(sel) as HTMLSelectElement;
-
-        const partial: Partial<LayerAsset> = {
-            file:         qSelect('.layer-file-select')?.value || null,
-            opacity:      parseFloat(q('.layer-opacity')?.value ?? '1'),
-            emissive:     [
-                parseFloat(q('.layer-emissive-r')?.value ?? '0'),
-                parseFloat(q('.layer-emissive-g')?.value ?? '0'),
-                parseFloat(q('.layer-emissive-b')?.value ?? '0'),
-            ] as [number, number, number],
-            yOffset:      parseFloat(q('.layer-y')?.value ?? '0'),
-            zOffset:      parseFloat(q('.layer-z')?.value ?? '0'),
-            height:       parseFloat(q('.layer-height')?.value ?? '40'),
-            widthScale:   parseFloat(q('.layer-wscale')?.value ?? '1'),
-            scrollSpeedX: parseFloat(q('.layer-scrollx')?.value ?? '0'),
-            scrollSpeedY: parseFloat(q('.layer-scrolly')?.value ?? '0'),
-            blendMode:    qSelect('.layer-blend')?.value as any ?? 'alpha',
-        };
-
-        // Merge dans les overrides
-        const existing = this.overrides.get(biome) ?? {};
-        (existing as any)[key] = partial;
-        this.overrides.set(biome, existing);
-
-        // Reconstruire la preview
-        const base = BIOME_LAYER_PRESETS[biome] ?? BIOME_LAYER_PRESETS['forest'];
-        const merged: BiomeLayerPreset = {
-            ...base,
-            ...existing,
-            background: { ...base.background, ...(existing.background ?? {}) },
-            midground:  { ...base.midground,  ...(existing.midground  ?? {}) },
-            platformBlendFog: { ...base.platformBlendFog, ...(existing.platformBlendFog ?? {}) },
-            foreground: { ...base.foreground, ...(existing.foreground ?? {}) },
-            fxOverlay:  { ...base.fxOverlay,  ...(existing.fxOverlay  ?? {}) },
-        };
-
-        // Mettre à jour le strip couleur du card
-        const strip = card.querySelector('.layer-preview-strip') as HTMLElement;
-        const em = partial.emissive ?? [0, 0, 0];
-        const op = partial.opacity ?? 1;
-        if (strip) {
-            strip.style.background = `linear-gradient(90deg,
-                rgba(${Math.round(em[0]*255)},${Math.round(em[1]*255)},${Math.round(em[2]*255)},${op}),
-                transparent)`;
-        }
-
-        this.refreshPreview(merged);
-        this.refreshContractStatus(merged);
-        this.onLayerChange?.(biome, existing);
+    private deleteLayer(index: number): void {
+        const stack = this.ensureStack(this.currentBiome);
+        stack.layers.splice(index, 1);
+        stack.layers = this.sortAndRenumber(stack.layers);
+        this.commitCurrentStack();
+        this.renderLayerList();
     }
 
-    // ─── Preview composite canvas ──────────────────────────────────────────
+    private duplicateLayer(index: number): void {
+        const stack = this.ensureStack(this.currentBiome);
+        const source = stack.layers[index];
+        if (!source) return;
+        stack.layers.splice(index + 1, 0, {
+            ...cloneLayer(source),
+            id: `${source.id}_copy_${Date.now()}`,
+            name: `${source.name} copy`,
+            compositionRole: undefined,
+        });
+        stack.layers = this.sortAndRenumber(stack.layers);
+        this.commitCurrentStack();
+        this.renderLayerList();
+    }
 
-    private refreshPreview(preset: BiomeLayerPreset): void {
+    private moveLayer(index: number, direction: -1 | 1): void {
+        const stack = this.ensureStack(this.currentBiome);
+        const next = index + direction;
+        if (next < 0 || next >= stack.layers.length) return;
+        const tmp = stack.layers[index];
+        stack.layers[index] = stack.layers[next];
+        stack.layers[next] = tmp;
+        stack.layers = this.sortAndRenumber(stack.layers);
+        this.commitCurrentStack();
+        this.renderLayerList();
+    }
+
+    private resetBiomePreset(): void {
+        const base = BIOME_LAYER_PRESETS[this.currentBiome] ?? BIOME_LAYER_PRESETS.forest;
+        this.stacks.set(this.currentBiome, cloneStack(base));
+        this.commitCurrentStack();
+        this.renderLayerList();
+    }
+
+    private commitCurrentStack(triggerCallback: boolean = true): void {
+        const stack = this.ensureStack(this.currentBiome);
+        stack.layers = this.sortAndRenumber(stack.layers);
+        this.stacks.set(this.currentBiome, withLegacyAliases(stack));
+        this.refreshPreview(stack);
+        this.refreshStatus(stack);
+        if (triggerCallback) this.onLayerChange?.(this.currentBiome, cloneStack(stack));
+    }
+
+    private refreshPreview(stack: SceneLayerPreset): void {
         if (!this.previewCanvas) return;
-        const ctx = this.previewCanvas.getContext('2d')!;
+        const ctx = this.previewCanvas.getContext('2d');
+        if (!ctx) return;
+
         const w = this.previewCanvas.width;
         const h = this.previewCanvas.height;
         const token = ++this.previewToken;
-        const imageLayers = [
-            { cfg: preset.background, fit: 'cover' as const },
-            { cfg: preset.midground, fit: 'stage' as const },
-            { cfg: preset.platformBlendFog, fit: 'stage' as const },
-            { cfg: preset.fxOverlay, fit: 'cover' as const },
-            { cfg: preset.foreground, fit: 'front' as const },
-        ];
-
         const draw = () => {
             if (token !== this.previewToken) return;
             ctx.clearRect(0, 0, w, h);
             const bg = ctx.createLinearGradient(0, 0, 0, h);
-            bg.addColorStop(0, '#152434');
-            bg.addColorStop(0.55, '#0b1712');
-            bg.addColorStop(1, '#050807');
+            bg.addColorStop(0, '#132532');
+            bg.addColorStop(0.55, '#07120f');
+            bg.addColorStop(1, '#020403');
             ctx.fillStyle = bg;
             ctx.fillRect(0, 0, w, h);
 
-            for (const { cfg, fit } of imageLayers) {
-                if (!cfg.file) continue;
-                const img = this.getPreviewImage(cfg.file, draw);
-                if (!img.complete || img.naturalWidth === 0) continue;
+            const sorted = [...stack.layers]
+                .filter(layer => layer.enabled !== false && layer.file)
+                .sort((a, b) => a.order - b.order);
+            for (const layer of sorted) {
+                const img = this.getPreviewImage(layer.file!, draw);
+                if (!img.complete || !img.naturalWidth) continue;
                 ctx.save();
-                ctx.globalAlpha = cfg.opacity;
-                ctx.globalCompositeOperation = cfg.blendMode === 'additive' || cfg.blendMode === 'screen' ? 'lighter' : 'source-over';
-                this.drawLayerImage(ctx, img, fit, w, h);
+                ctx.globalAlpha = layer.opacity;
+                ctx.globalCompositeOperation = layer.blendMode === 'additive' || layer.blendMode === 'screen' ? 'lighter' : 'source-over';
+                const dx = layer.xOffset * (w / 160);
+                const dy = -layer.yOffset * (h / 180);
+                const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight) * Math.max(0.05, layer.widthScale);
+                const dw = img.naturalWidth * scale;
+                const dh = img.naturalHeight * scale;
+                ctx.drawImage(img, (w - dw) * 0.5 + dx, (h - dh) * 0.5 + dy, dw, dh);
                 ctx.restore();
             }
-
             this.drawPreviewGrid(ctx, w, h);
         };
-
         draw();
-        return;
-
-        ctx.clearRect(0, 0, w, h);
-
-        // Fond sombre
-        ctx.fillStyle = '#0a0c14';
-        ctx.fillRect(0, 0, w, h);
-
-        // On dessine chaque layer comme une bande colorée
-        const layers = [
-            { cfg: preset.background, label: 'BG',   y: 0,    lh: 18 },
-            { cfg: preset.midground,  label: 'MID',  y: 20,   lh: 18 },
-            { cfg: preset.fxOverlay,  label: 'FX',   y: 40,   lh: 18 },
-            { cfg: preset.foreground, label: 'FORE', y: 60,   lh: 18 },
-        ];
-
-        for (const { cfg, label, y, lh } of layers) {
-            const [r, g, b] = cfg.emissive;
-            const op = cfg.opacity;
-
-            // Barre de fond
-            const grad = ctx.createLinearGradient(0, 0, w, 0);
-            grad.addColorStop(0,   `rgba(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)},${op})`);
-            grad.addColorStop(0.7, `rgba(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)},${op*0.4})`);
-            grad.addColorStop(1,   `rgba(0,0,0,0)`);
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, y, w, lh);
-
-            // Label
-            ctx.fillStyle = `rgba(255,255,255,0.5)`;
-            ctx.font = 'bold 8px monospace';
-            ctx.fillText(`${label}${cfg.file ? ' ✓' : ' ∅'}`, 4, y + 12);
-
-            // Opacité bar
-            ctx.fillStyle = `rgba(255,255,255,0.12)`;
-            ctx.fillRect(w - 50, y + 6, 44 * op, 6);
-            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-            ctx.strokeRect(w - 50, y + 6, 44, 6);
-        }
-
-        // Grille de superposition
-        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-        ctx.lineWidth = 0.5;
-        for (let i = 0; i < h; i += 20) {
-            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(w, i); ctx.stroke();
-        }
     }
-
-    // ─── Export ────────────────────────────────────────────────────────────
 
     private getPreviewImage(file: string, onLoad: () => void): HTMLImageElement {
         const cached = this.imageCache.get(file);
@@ -666,39 +658,18 @@ export class MapEditorLayersTab {
         return img;
     }
 
-    private drawLayerImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, fit: 'cover' | 'stage' | 'front', w: number, h: number): void {
-        if (fit === 'stage') {
-            this.drawImageCover(ctx, img, 0, h * 0.18, w, h * 0.72);
-            return;
-        }
-        if (fit === 'front') {
-            this.drawImageCover(ctx, img, 0, h * 0.34, w, h * 0.66);
-            return;
-        }
-        this.drawImageCover(ctx, img, 0, 0, w, h);
-    }
-
-    private drawImageCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number): void {
-        const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
-        const sw = w / scale;
-        const sh = h / scale;
-        const sx = (img.naturalWidth - sw) * 0.5;
-        const sy = (img.naturalHeight - sh) * 0.5;
-        ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
-    }
-
     private drawPreviewGrid(ctx: CanvasRenderingContext2D, w: number, h: number): void {
         ctx.save();
-        ctx.globalAlpha = 0.55;
-        ctx.strokeStyle = 'rgba(125,185,255,0.18)';
+        ctx.globalAlpha = 0.62;
+        ctx.strokeStyle = 'rgba(46,220,236,0.28)';
         ctx.lineWidth = 1;
-        const left = w * 0.17;
-        const top = h * 0.54;
-        const tileW = w * 0.095;
-        const tileH = h * 0.075;
+        const left = w * 0.25;
+        const top = h * 0.62;
+        const tileW = w * 0.08;
+        const tileH = h * 0.06;
         for (let row = 0; row < 5; row++) {
             for (let col = 0; col < 8; col++) {
-                const x = left + col * tileW + row * tileW * 0.45;
+                const x = left + col * tileW + row * tileW * 0.35;
                 const y = top + row * tileH;
                 ctx.strokeRect(x, y, tileW, tileH);
             }
@@ -706,95 +677,47 @@ export class MapEditorLayersTab {
         ctx.restore();
     }
 
-    private refreshContractStatus(preset: BiomeLayerPreset): void {
-        const host = this.container.querySelector('#layerContractStatus') as HTMLElement | null;
+    private refreshStatus(stack: SceneLayerPreset): void {
+        const host = this.container.querySelector('#layersStackStatus') as HTMLElement | null;
         if (!host) return;
-
-        host.innerHTML = LAYER_META.map(meta => {
-            const cfg = preset[meta.key];
-            const expected = FOREST_V3_FILES[meta.key];
-            const file = cfg.file ?? '';
-            const fileBadge = file === expected
-                ? `<span class="contract-badge ok">V3</span>`
-                : `<span class="contract-badge warn">custom</span>`;
-            return `
-                <div class="contract-line" data-contract-layer="${meta.key}">
-                    <strong>${meta.label}</strong>
-                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${file || 'aucun fichier'}</span>
-                    <span class="contract-badge ok" data-contract-size="${meta.key}">actif</span>
-                    ${fileBadge}
-                </div>
-            `;
-        }).join('');
-
+        const enabled = stack.layers.filter(layer => layer.enabled !== false && layer.file).length;
+        host.innerHTML = `
+            <b>${stack.layers.length}</b> layers dans la pile, <b>${enabled}</b> actifs.<br>
+            Export nouveau format: <code>sceneLayers.layers[]</code>.
+        `;
     }
 
-    private applyForestV3Preset(): void {
-        const base = BIOME_LAYER_PRESETS.forest;
-        const override: Partial<BiomeLayerPreset> = {
-            id: 'forest',
-            background: { ...base.background, file: FOREST_V3_FILES.background },
-            midground: { ...base.midground, file: FOREST_V3_FILES.midground },
-            platformBlendFog: { ...base.platformBlendFog, file: FOREST_V3_FILES.platformBlendFog },
-            foreground: { ...base.foreground, file: FOREST_V3_FILES.foreground },
-            fxOverlay: { ...base.fxOverlay, file: FOREST_V3_FILES.fxOverlay },
-        };
-
-        this.currentBiome = 'forest';
-        this.editorRef.currentBiome = 'forest';
-        this.overrides.set('forest', override);
-        this.refresh('forest');
-        this.onLayerChange?.('forest', override);
-    }
-
-    private exportOverrides(): void {
-        const out: Record<string, any> = {};
-        this.overrides.forEach((v, k) => { out[k] = v; });
-        const json = JSON.stringify({ layerOverrides: out }, null, 2);
-        const blob = new Blob([json], { type: 'application/json' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href = url;
-        a.download = `layers_overrides_${Date.now()}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-    }
-
-    /** Retourne les overrides pour injection dans l'export JSON de la carte */
-    getOverridesForBiome(biome: string): Partial<BiomeLayerPreset> | undefined {
-        return this.overrides.get(biome);
-    }
-
-    /** Retourne toutes les surcharges configurées dans la session d'édition */
-    getAllOverrides(): Record<string, Partial<BiomeLayerPreset>> {
-        const out: Record<string, Partial<BiomeLayerPreset>> = {};
-        this.overrides.forEach((value, biome) => { out[biome] = value; });
-        return out;
-    }
-
-    /** Charge des overrides depuis un JSON importé */
-    loadOverridesFromJSON(data: Record<string, Partial<BiomeLayerPreset>>): void {
-        for (const [biome, override] of Object.entries(data)) {
-            this.overrides.set(biome, override);
-        }
-        this.refresh(this.currentBiome);
-    }
-
-    /** Met à jour quand le biome actif change */
-    setBiome(biome: string): void {
-        const select = this.container.querySelector('#biomeSelect') as HTMLSelectElement | null;
-        if (select) select.value = biome;
-        this.refresh(biome);
+    private formatValue(value: number, format: string): string {
+        if (format === 'percent') return `${Math.round(value * 100)}%`;
+        if (format === 'int') return value.toFixed(0);
+        if (format === 'scale') return value.toFixed(2);
+        if (format === 'scroll') return value.toFixed(3);
+        return value.toFixed(1);
     }
 }
 
-// ---------------------------------------------------------------------------
-// HTML du tab à injecter dans MapEditor.buildHTMLToolbar()
-// Ajouter dans la section .tabs :
-//   <button class="tab-btn" data-tab="tab-layers">🖼 Layers</button>
-// Et dans le body :
-//   <div id="tab-layers" class="editor-tab" style="display:none;"></div>
-// La div sera peuplée par MapEditorLayersTab.
-// ---------------------------------------------------------------------------
+function roleToId(role: SceneLayerCompositionRole): string {
+    return role.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+}
+
+function defaultOrderForRole(role: SceneLayerCompositionRole): number {
+    switch (role) {
+        case 'backAtmosphere': return 0;
+        case 'mainMidground': return 10;
+        case 'groundBlend': return 20;
+        case 'foregroundCorners': return 30;
+        case 'upperCanopy': return 40;
+        case 'fxOverlay': return 50;
+        default: return 100;
+    }
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
 
 export const LAYERS_TAB_HTML = '';

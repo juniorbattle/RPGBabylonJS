@@ -13,7 +13,10 @@ import {
 import {
     SceneLayerAsset,
     SceneLayerCameraMode,
+    SceneLayerCompositionRole,
+    SceneLayerInput,
     SceneLayerPreset,
+    SceneLayerStack,
 } from './SceneLayerTypes';
 import { SCENE_LAYER_PRESETS } from '../biomes/magicalForestLayers';
 
@@ -27,15 +30,35 @@ interface ManagedLayer {
     basePosition: Vector3;
 }
 
-type LayerRole = 'background' | 'midground' | 'platformBlendFog' | 'foreground' | 'fxOverlay';
-
-const LAYER_ORDER: Array<{ id: string; role: LayerRole }> = [
-    { id: 'background', role: 'background' },
-    { id: 'midground', role: 'midground' },
-    { id: 'platform_blend_fog', role: 'platformBlendFog' },
-    { id: 'foreground_frame', role: 'foreground' },
-    { id: 'fx_overlay', role: 'fxOverlay' },
+const LEGACY_ORDER: Array<{ key: keyof SceneLayerPreset; role: SceneLayerCompositionRole; id: string; name: string; order: number }> = [
+    { key: 'background', role: 'backAtmosphere', id: 'back_atmosphere', name: 'Back atmosphere', order: 0 },
+    { key: 'backAtmosphere', role: 'backAtmosphere', id: 'back_atmosphere', name: 'Back atmosphere', order: 0 },
+    { key: 'midground', role: 'mainMidground', id: 'main_midground', name: 'Main midground', order: 10 },
+    { key: 'mainMidground', role: 'mainMidground', id: 'main_midground', name: 'Main midground', order: 10 },
+    { key: 'platformBlendFog', role: 'groundBlend', id: 'ground_blend', name: 'Ground blend', order: 20 },
+    { key: 'groundBlend', role: 'groundBlend', id: 'ground_blend', name: 'Ground blend', order: 20 },
+    { key: 'foreground', role: 'foregroundCorners', id: 'foreground_corners', name: 'Foreground corners', order: 30 },
+    { key: 'foregroundCorners', role: 'foregroundCorners', id: 'foreground_corners', name: 'Foreground corners', order: 30 },
+    { key: 'upperCanopy', role: 'upperCanopy', id: 'upper_canopy', name: 'Upper canopy', order: 40 },
+    { key: 'fxOverlay', role: 'fxOverlay', id: 'fx_overlay', name: 'FX overlay', order: 50 },
 ];
+
+const cloneLayer = (layer: SceneLayerAsset): SceneLayerAsset => ({
+    ...layer,
+    emissive: [...layer.emissive] as [number, number, number],
+    cameraOpacity: layer.cameraOpacity ? { ...layer.cameraOpacity } : undefined,
+    cameraYOffset: layer.cameraYOffset ? { ...layer.cameraYOffset } : undefined,
+    cameraZOffset: layer.cameraZOffset ? { ...layer.cameraZOffset } : undefined,
+});
+
+const mergeLayer = (base: SceneLayerAsset, override: Partial<SceneLayerAsset>): SceneLayerAsset => ({
+    ...base,
+    ...override,
+    emissive: (override.emissive ?? base.emissive) as [number, number, number],
+    cameraOpacity: { ...(base.cameraOpacity ?? {}), ...(override.cameraOpacity ?? {}) },
+    cameraYOffset: { ...(base.cameraYOffset ?? {}), ...(override.cameraYOffset ?? {}) },
+    cameraZOffset: { ...(base.cameraZOffset ?? {}), ...(override.cameraZOffset ?? {}) },
+});
 
 export class SceneLayerManager {
     private layers: ManagedLayer[] = [];
@@ -50,15 +73,17 @@ export class SceneLayerManager {
         private baseSurfaceY: number = 0
     ) {}
 
-    buildLayers(biome: string, overrides?: Partial<SceneLayerPreset>, mode: SceneLayerCameraMode = this.mode): void {
+    buildLayers(biome: string, input?: SceneLayerInput, mode: SceneLayerCameraMode = this.mode): void {
         this.clearLayers();
         const base = SCENE_LAYER_PRESETS[biome] ?? SCENE_LAYER_PRESETS.forest;
-        this.preset = this.mergePreset(base, overrides);
+        this.preset = this.resolvePreset(base, input, biome);
         this.mode = mode;
 
-        for (const entry of LAYER_ORDER) {
-            this.buildLayer(entry.id, entry.role, this.preset[entry.role]);
-        }
+        const sorted = [...this.preset.layers]
+            .filter((layer) => layer.enabled !== false && !!layer.file)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+        sorted.forEach((layer, index) => this.buildLayer(layer, index));
         this.applyCameraMode(mode);
     }
 
@@ -77,14 +102,14 @@ export class SceneLayerManager {
     }
 
     setCinematicMode(enabled: boolean): void {
-        const factors: Partial<Record<LayerRole, number>> = {
-            foreground: 0.35,
-            fxOverlay: 0.5,
-            platformBlendFog: 0.72,
-        };
         for (const layer of this.layers) {
-            const factor = factors[layer.mesh.metadata?.layerRole as LayerRole] ?? 1;
             const baseAlpha = layer.cfg.cameraOpacity?.[this.mode] ?? layer.cfg.opacity;
+            const role = layer.cfg.compositionRole;
+            const factor = role === 'foregroundCorners' ? 0.35
+                : role === 'upperCanopy' ? 0.45
+                : role === 'fxOverlay' ? 0.5
+                : role === 'groundBlend' ? 0.72
+                : 1;
             layer.mat.alpha = enabled ? baseAlpha * factor : baseAlpha;
         }
     }
@@ -97,22 +122,23 @@ export class SceneLayerManager {
         this.clearLayers();
     }
 
-    private buildLayer(id: string, role: LayerRole, cfg: SceneLayerAsset): void {
+    private buildLayer(cfg: SceneLayerAsset, index: number): void {
         if (!cfg.file) return;
 
         const planeW = this.mapW * cfg.widthScale;
         const planeH = cfg.height;
-        const mesh = MeshBuilder.CreatePlane(`sceneLayer_${id}`, { width: planeW, height: planeH }, this.scene);
+        const safeId = cfg.id || `layer_${index}`;
+        const mesh = MeshBuilder.CreatePlane(`sceneLayer_${safeId}`, { width: planeW, height: planeH }, this.scene);
         const basePosition = this.computePosition(cfg, planeH);
 
         mesh.position.copyFrom(basePosition);
         mesh.parent = this.root;
         mesh.isPickable = false;
         mesh.renderingGroupId = cfg.renderGroup;
-        mesh.metadata = { ...(mesh.metadata ?? {}), layerRole: role };
+        mesh.metadata = { ...(mesh.metadata ?? {}), layerId: safeId, layerRole: cfg.compositionRole ?? 'custom' };
         if (cfg.billboard) mesh.billboardMode = TransformNode.BILLBOARDMODE_ALL;
 
-        const mat = new StandardMaterial(`sceneLayerMat_${id}_${Date.now()}`, this.scene);
+        const mat = new StandardMaterial(`sceneLayerMat_${safeId}_${Date.now()}`, this.scene);
         mat.backFaceCulling = false;
         mat.disableLighting = true;
         mat.specularColor = new Color3(0, 0, 0);
@@ -164,13 +190,14 @@ export class SceneLayerManager {
             });
         }
 
-        this.layers.push({ id, cfg, mesh, mat, tex, observer, basePosition });
+        this.layers.push({ id: safeId, cfg, mesh, mat, tex, observer, basePosition });
     }
 
     private computePosition(cfg: SceneLayerAsset, planeH: number): Vector3 {
+        const x = cfg.xOffset ?? 0;
         const y = this.baseSurfaceY + cfg.yOffset + planeH * 0.5;
         const z = this.mapD / 2 + cfg.zOffset;
-        return new Vector3(0, y, z);
+        return new Vector3(x, y, z);
     }
 
     private clearLayers(): void {
@@ -183,16 +210,127 @@ export class SceneLayerManager {
         this.layers = [];
     }
 
-    private mergePreset(base: SceneLayerPreset, overrides?: Partial<SceneLayerPreset>): SceneLayerPreset {
-        if (!overrides) return base;
+    private resolvePreset(base: SceneLayerPreset, input: SceneLayerInput | undefined, biome: string): SceneLayerPreset {
+        const baseStack = this.normalizeStack(base, biome);
+        if (!input) return this.withLegacyAliases(baseStack);
+
+        if (Array.isArray((input as SceneLayerStack).layers)) {
+            const stack = this.normalizeStack(input as SceneLayerStack, biome, baseStack);
+            return this.withLegacyAliases(stack);
+        }
+
+        const legacy = this.legacyOverridesToStack(input as Partial<SceneLayerPreset>, baseStack);
+        return this.withLegacyAliases(legacy);
+    }
+
+    private normalizeStack(input: SceneLayerStack, biome: string, fallback?: SceneLayerPreset): SceneLayerPreset {
+        const fallbackLayers = fallback?.layers ?? [];
+        const fallbackById = new Map(fallbackLayers.map((layer) => [layer.id, layer]));
+        const layers = input.layers.map((raw, index) => {
+            const base = fallbackById.get(raw.id);
+            const merged = base ? mergeLayer(base, raw) : this.fillLayerDefaults(raw, index);
+            return cloneLayer(merged);
+        });
+
         return {
+            id: input.id ?? fallback?.id ?? `${biome}_layers`,
+            biome: input.biome ?? biome,
+            layers,
+            particleColor: input.particleColor ?? fallback?.particleColor ?? [0.4, 1, 0.2],
+            particleCount: input.particleCount ?? fallback?.particleCount ?? 18,
+            particleAlpha: input.particleAlpha ?? fallback?.particleAlpha ?? [0.06, 0.2],
+        };
+    }
+
+    private legacyOverridesToStack(overrides: Partial<SceneLayerPreset>, base: SceneLayerPreset): SceneLayerPreset {
+        const byRole = new Map<SceneLayerCompositionRole, SceneLayerAsset>();
+        for (const layer of base.layers) {
+            if (layer.compositionRole) byRole.set(layer.compositionRole, layer);
+        }
+
+        const consumed = new Set<SceneLayerCompositionRole>();
+        const layers = base.layers.map((baseLayer) => {
+            const role = baseLayer.compositionRole;
+            if (!role) return cloneLayer(baseLayer);
+            const legacy = LEGACY_ORDER
+                .filter((entry) => entry.role === role)
+                .map((entry) => overrides[entry.key])
+                .filter(Boolean)
+                .reduce((acc, value) => ({ ...acc, ...(value as Partial<SceneLayerAsset>) }), {} as Partial<SceneLayerAsset>);
+            consumed.add(role);
+            return cloneLayer(mergeLayer(baseLayer, legacy));
+        });
+
+        for (const entry of LEGACY_ORDER) {
+            if (consumed.has(entry.role)) continue;
+            const override = overrides[entry.key] as Partial<SceneLayerAsset> | undefined;
+            if (!override) continue;
+            const source = byRole.get(entry.role);
+            layers.push(this.fillLayerDefaults({
+                ...(source ?? {}),
+                ...override,
+                id: source?.id ?? entry.id,
+                name: source?.name ?? entry.name,
+                order: source?.order ?? entry.order,
+                compositionRole: entry.role,
+            } as Partial<SceneLayerAsset>, layers.length));
+        }
+
+        return this.withLegacyAliases({
             ...base,
             ...overrides,
-            background: { ...base.background, ...(overrides.background ?? {}) },
-            midground: { ...base.midground, ...(overrides.midground ?? {}) },
-            platformBlendFog: { ...base.platformBlendFog, ...(overrides.platformBlendFog ?? {}) },
-            foreground: { ...base.foreground, ...(overrides.foreground ?? {}) },
-            fxOverlay: { ...base.fxOverlay, ...(overrides.fxOverlay ?? {}) },
+            layers,
+        });
+    }
+
+    private fillLayerDefaults(raw: Partial<SceneLayerAsset>, index: number): SceneLayerAsset {
+        return {
+            id: raw.id ?? `custom_layer_${index + 1}`,
+            name: raw.name ?? `Layer ${index + 1}`,
+            enabled: raw.enabled ?? true,
+            order: raw.order ?? index * 10,
+            file: raw.file ?? null,
+            opacity: raw.opacity ?? 1,
+            blendMode: raw.blendMode ?? 'alpha',
+            emissive: (raw.emissive ?? [1, 1, 1]) as [number, number, number],
+            xOffset: raw.xOffset ?? 0,
+            yOffset: raw.yOffset ?? 0,
+            zOffset: raw.zOffset ?? 0,
+            widthScale: raw.widthScale ?? 1,
+            height: raw.height ?? 36,
+            billboard: raw.billboard ?? false,
+            renderGroup: raw.renderGroup ?? 0,
+            alphaKey: raw.alphaKey ?? 'texture',
+            scrollSpeedX: raw.scrollSpeedX ?? 0,
+            scrollSpeedY: raw.scrollSpeedY ?? 0,
+            uvScaleX: raw.uvScaleX,
+            uvScaleY: raw.uvScaleY,
+            uvOffsetX: raw.uvOffsetX,
+            uvOffsetY: raw.uvOffsetY,
+            cameraOpacity: raw.cameraOpacity ? { ...raw.cameraOpacity } : undefined,
+            cameraYOffset: raw.cameraYOffset ? { ...raw.cameraYOffset } : undefined,
+            cameraZOffset: raw.cameraZOffset ? { ...raw.cameraZOffset } : undefined,
+            parallaxStrength: raw.parallaxStrength ?? 0,
+            stageFit: raw.stageFit,
+            compositionRole: raw.compositionRole,
+        };
+    }
+
+    private withLegacyAliases(preset: SceneLayerPreset): SceneLayerPreset {
+        const byRole = (role: SceneLayerCompositionRole): SceneLayerAsset | undefined =>
+            preset.layers.find((layer) => layer.compositionRole === role);
+        return {
+            ...preset,
+            backAtmosphere: byRole('backAtmosphere'),
+            mainMidground: byRole('mainMidground'),
+            groundBlend: byRole('groundBlend'),
+            foregroundCorners: byRole('foregroundCorners'),
+            upperCanopy: byRole('upperCanopy'),
+            fxOverlay: byRole('fxOverlay'),
+            background: byRole('backAtmosphere'),
+            midground: byRole('mainMidground'),
+            platformBlendFog: byRole('groundBlend'),
+            foreground: byRole('foregroundCorners'),
         };
     }
 }

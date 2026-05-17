@@ -18,7 +18,7 @@ import {
 import { CombatGrid, GridConfig } from '../combat/CombatGrid';
 import { MapEditorLayersTab } from '../editor/MapEditorLayersTab';
 import { SceneLayerManager } from '../rendering/SceneLayerManager';
-import type { SceneLayerPreset } from '../rendering/SceneLayerTypes';
+import type { SceneLayerInput } from '../rendering/SceneLayerTypes';
 
 // ---------------------------------------------------------------------------
 // Types manifest
@@ -763,7 +763,7 @@ export class MapEditor {
         this.rebuildSceneLayers();
     }
 
-    private rebuildSceneLayers(overrides?: Partial<SceneLayerPreset>): void {
+    private rebuildSceneLayers(overrides?: SceneLayerInput): void {
         if (!this.layerPreviewRoot) return;
         const mapW = this.customW * this.tileSize;
         const mapD = this.customD * this.tileSize;
@@ -777,7 +777,7 @@ export class MapEditor {
         );
         this.layerManager.buildLayers(
             this.currentBiome,
-            overrides ?? this.layersTab?.getOverridesForBiome(this.currentBiome)
+            overrides ?? this.layersTab?.getSceneLayersForBiome(this.currentBiome)
         );
     }
 
@@ -1629,9 +1629,9 @@ export class MapEditor {
             decorations: decorList,
             proceduralMeta: { seed:this.procSeed, density:this.procDensity, cloudSeed:this.cloudSeed, groundSeed:this.groundSeed }
         };
-        const layerOverrides = this.layersTab?.getAllOverrides();
-        if (layerOverrides && Object.keys(layerOverrides).length > 0) {
-            out.layerOverrides = layerOverrides;
+        const sceneLayers = this.layersTab?.getSceneLayersForExport();
+        if (sceneLayers?.layers?.length) {
+            out.sceneLayers = sceneLayers;
         }
         const blob = new Blob([JSON.stringify(out,null,2)],{type:"application/json"});
         const url  = URL.createObjectURL(blob);
@@ -1655,7 +1655,16 @@ export class MapEditor {
                     this.refreshBiome(d.biome);
                     this.layersTab?.setBiome(d.biome);
                 }
-                if (d.layerOverrides) {
+                if (d.sceneLayers) {
+                    const sceneLayerBiome = d.sceneLayers.biome ?? d.biome ?? this.currentBiome;
+                    if (!d.biome && sceneLayerBiome) {
+                        this.currentBiome = sceneLayerBiome;
+                        if (biomeSelect) biomeSelect.value = sceneLayerBiome;
+                        this.refreshBiome(sceneLayerBiome);
+                    }
+                    this.layersTab?.loadSceneLayersFromJSON(d.sceneLayers);
+                    this.rebuildSceneLayers(d.sceneLayers);
+                } else if (d.layerOverrides) {
                     this.layersTab?.loadOverridesFromJSON(d.layerOverrides);
                     this.rebuildSceneLayers();
                 }
