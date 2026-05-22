@@ -215,7 +215,9 @@ export class SceneLayerManager {
         if (!input) return this.withLegacyAliases(baseStack);
 
         if (Array.isArray((input as SceneLayerStack).layers)) {
-            const stack = this.normalizeStack(input as SceneLayerStack, biome, baseStack);
+            const explicitLayers = input as SceneLayerStack;
+            const fallback = explicitLayers.layers.length === 0 ? undefined : baseStack;
+            const stack = this.normalizeStack(explicitLayers, biome, fallback);
             return this.withLegacyAliases(stack);
         }
 
@@ -226,6 +228,7 @@ export class SceneLayerManager {
     private normalizeStack(input: SceneLayerStack, biome: string, fallback?: SceneLayerPreset): SceneLayerPreset {
         const fallbackLayers = fallback?.layers ?? [];
         const fallbackById = new Map(fallbackLayers.map((layer) => [layer.id, layer]));
+        const explicitEmpty = Array.isArray(input.layers) && input.layers.length === 0;
         const layers = input.layers.map((raw, index) => {
             const base = fallbackById.get(raw.id);
             const merged = base ? mergeLayer(base, raw) : this.fillLayerDefaults(raw, index);
@@ -237,7 +240,7 @@ export class SceneLayerManager {
             biome: input.biome ?? biome,
             layers,
             particleColor: input.particleColor ?? fallback?.particleColor ?? [0.4, 1, 0.2],
-            particleCount: input.particleCount ?? fallback?.particleCount ?? 18,
+            particleCount: input.particleCount ?? (explicitEmpty ? 0 : fallback?.particleCount ?? 18),
             particleAlpha: input.particleAlpha ?? fallback?.particleAlpha ?? [0.06, 0.2],
         };
     }

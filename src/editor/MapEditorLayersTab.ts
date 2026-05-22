@@ -5,6 +5,7 @@ import type {
     SceneLayerBlendMode,
     SceneLayerCompositionRole,
     SceneLayerPreset,
+    SceneLayerStageFit,
     SceneLayerStack,
 } from '../rendering/SceneLayerTypes';
 
@@ -28,6 +29,144 @@ const ROLE_LABELS: Partial<Record<SceneLayerCompositionRole, string>> = {
 
 const DEFAULT_PARTICLE_COLOR: [number, number, number] = [0.4, 1, 0.2];
 const DEFAULT_PARTICLE_ALPHA: [number, number] = [0.06, 0.2];
+
+type LayerConfigPresetKey = 'back' | 'mid' | 'ground' | 'frame' | 'canopy' | 'fx';
+
+interface LayerConfigPreset {
+    key: LayerConfigPresetKey;
+    label: string;
+    title: string;
+    patch: Partial<SceneLayerAsset>;
+}
+
+const LAYER_CONFIG_PRESETS: LayerConfigPreset[] = [
+    {
+        key: 'back',
+        label: 'Back',
+        title: 'Fond discret: brume, lointain, atmosphere',
+        patch: {
+            opacity: 0.28,
+            blendMode: 'additive',
+            emissive: [0.24, 0.62, 0.34],
+            xOffset: 0,
+            yOffset: -6,
+            zOffset: 42,
+            widthScale: 5,
+            height: 38,
+            renderGroup: 0,
+            cameraOpacity: { front: 0.3, overview: 0.2 },
+            parallaxStrength: 0.03,
+            scrollSpeedX: 0.0005,
+            scrollSpeedY: 0,
+            stageFit: 'full-stage',
+        },
+    },
+    {
+        key: 'mid',
+        label: 'Mid',
+        title: 'Layer principal: cadre la clairiere et porte la scene',
+        patch: {
+            opacity: 1,
+            blendMode: 'alpha',
+            emissive: [1, 1, 1],
+            xOffset: 0,
+            yOffset: -8,
+            zOffset: 27,
+            widthScale: 4.8,
+            height: 38,
+            renderGroup: 0,
+            cameraOpacity: { front: 1, overview: 0.88 },
+            parallaxStrength: 0.07,
+            scrollSpeedX: 0,
+            scrollSpeedY: 0,
+            stageFit: 'full-stage',
+        },
+    },
+    {
+        key: 'ground',
+        label: 'Ground',
+        title: 'Raccord sol: brume basse sous et autour de la grille',
+        patch: {
+            opacity: 0.46,
+            blendMode: 'additive',
+            emissive: [0.35, 0.88, 0.42],
+            xOffset: 0,
+            yOffset: -11,
+            zOffset: 12,
+            widthScale: 4.7,
+            height: 26,
+            renderGroup: 0,
+            cameraOpacity: { front: 0.5, overview: 0.28 },
+            parallaxStrength: 0.04,
+            scrollSpeedX: 0.001,
+            scrollSpeedY: 0,
+            stageFit: 'lower-stage',
+        },
+    },
+    {
+        key: 'frame',
+        label: 'Frame',
+        title: 'Premier plan: coins et bords proches camera',
+        patch: {
+            opacity: 0.58,
+            blendMode: 'alpha',
+            emissive: [1, 1, 1],
+            xOffset: 0,
+            yOffset: -8.5,
+            zOffset: -5,
+            widthScale: 5,
+            height: 40,
+            renderGroup: 1,
+            cameraOpacity: { front: 0.62, overview: 0.24 },
+            parallaxStrength: 0.22,
+            scrollSpeedX: 0,
+            scrollSpeedY: 0,
+            stageFit: 'foreground-frame',
+        },
+    },
+    {
+        key: 'canopy',
+        label: 'Canopy',
+        title: 'Cadre haut: branches, feuillage et lianes',
+        patch: {
+            opacity: 0.36,
+            blendMode: 'alpha',
+            emissive: [1, 1, 1],
+            xOffset: 0,
+            yOffset: 8,
+            zOffset: -3,
+            widthScale: 4.5,
+            height: 23,
+            renderGroup: 1,
+            cameraOpacity: { front: 0.38, overview: 0.16 },
+            parallaxStrength: 0.18,
+            scrollSpeedX: 0,
+            scrollSpeedY: 0,
+            stageFit: 'foreground-frame',
+        },
+    },
+    {
+        key: 'fx',
+        label: 'FX',
+        title: 'Overlay leger: particules, rayons, voile magique',
+        patch: {
+            opacity: 0.16,
+            blendMode: 'additive',
+            emissive: [0.32, 0.9, 0.36],
+            xOffset: 0,
+            yOffset: -8,
+            zOffset: -2,
+            widthScale: 4.9,
+            height: 39,
+            renderGroup: 1,
+            cameraOpacity: { front: 0.16, overview: 0.1 },
+            parallaxStrength: 0.16,
+            scrollSpeedX: 0.0015,
+            scrollSpeedY: 0,
+            stageFit: 'fx-overlay',
+        },
+    },
+];
 
 const cloneLayer = (layer: SceneLayerAsset): SceneLayerAsset => ({
     ...layer,
@@ -153,6 +292,27 @@ export class MapEditorLayersTab {
             padding:8px 10px 10px;
             border-top:1px solid rgba(255,255,255,0.05);
         }
+        #tab-layers .preset-strip {
+            display:grid;
+            grid-template-columns:repeat(3, minmax(0, 1fr));
+            gap:5px;
+            margin-bottom:8px;
+        }
+        #tab-layers .preset-btn {
+            border:1px solid rgba(124,166,220,0.18);
+            border-radius:5px;
+            background:rgba(35,55,82,0.35);
+            color:#bcd3ee;
+            padding:5px 4px;
+            font-size:9px;
+            font-weight:900;
+            cursor:pointer;
+        }
+        #tab-layers .preset-btn:hover {
+            border-color:rgba(111,176,255,0.45);
+            background:rgba(52,91,136,0.52);
+            color:#f0f7ff;
+        }
         #tab-layers .lrow {
             display:flex;
             align-items:center;
@@ -233,17 +393,17 @@ export class MapEditorLayersTab {
                 </select>
             </div>
             <div style="margin-top:7px;">
-                Stack libre de layers. Tous les plans sont non-pickables pour proteger les clics grille.
+                Pile libre de layers. Ajoute, duplique, ordonne et ajuste les plans sans bloquer les clics grille.
             </div>
         </div>
 
         <div class="layer-toolbar">
             <button id="btnAddSceneLayer" class="layer-btn primary">+ Ajouter layer</button>
-            <button id="btnResetSceneLayers" class="layer-btn">Preset biome</button>
+            <button id="btnClearSceneLayers" class="layer-btn danger">Vider layers</button>
         </div>
 
         <div class="layer-preview-wrap">
-            <div class="layer-preview-title">Preview rapide</div>
+            <div class="layer-preview-title">Preview composition</div>
             <canvas id="layersPreviewCanvas" width="320" height="170"
                 style="width:100%;border-radius:5px;border:1px solid rgba(255,255,255,.07);background:#0a0c14;display:block;"></canvas>
         </div>
@@ -260,7 +420,7 @@ export class MapEditorLayersTab {
             this.commitCurrentStack(false);
         });
         parent.querySelector('#btnAddSceneLayer')?.addEventListener('click', () => this.addLayer());
-        parent.querySelector('#btnResetSceneLayers')?.addEventListener('click', () => this.resetBiomePreset());
+        parent.querySelector('#btnClearSceneLayers')?.addEventListener('click', () => this.clearSceneLayers());
         return parent;
     }
 
@@ -308,24 +468,35 @@ export class MapEditorLayersTab {
     private ensureStack(biome: string): SceneLayerPreset {
         const existing = this.stacks.get(biome);
         if (existing) return existing;
-        const base = BIOME_LAYER_PRESETS[biome] ?? BIOME_LAYER_PRESETS.forest;
-        const clone = cloneStack(base);
-        this.stacks.set(biome, clone);
-        return clone;
+        const empty = this.createEmptyStack(biome);
+        this.stacks.set(biome, empty);
+        return empty;
     }
 
     private normalizeStack(raw: Partial<SceneLayerStack>, biome: string): SceneLayerPreset {
         const base = BIOME_LAYER_PRESETS[biome] ?? BIOME_LAYER_PRESETS.forest;
-        const layers = Array.isArray(raw.layers) && raw.layers.length
+        const layers = Array.isArray(raw.layers)
             ? raw.layers.map((layer, index) => this.fillLayerDefaults(layer as Partial<SceneLayerAsset>, index))
-            : base.layers.map(cloneLayer);
+            : [];
         return withLegacyAliases({
             id: raw.id ?? `${biome}_dynamic_layers`,
             biome,
             layers: this.sortAndRenumber(layers),
             particleColor: raw.particleColor ?? base.particleColor ?? DEFAULT_PARTICLE_COLOR,
-            particleCount: raw.particleCount ?? base.particleCount ?? 18,
+            particleCount: raw.particleCount ?? (layers.length === 0 ? 0 : base.particleCount ?? 18),
             particleAlpha: raw.particleAlpha ?? base.particleAlpha ?? DEFAULT_PARTICLE_ALPHA,
+        });
+    }
+
+    private createEmptyStack(biome: string): SceneLayerPreset {
+        const base = BIOME_LAYER_PRESETS[biome] ?? BIOME_LAYER_PRESETS.forest;
+        return withLegacyAliases({
+            id: `${biome}_empty_layers`,
+            biome,
+            layers: [],
+            particleColor: base.particleColor ?? DEFAULT_PARTICLE_COLOR,
+            particleCount: 0,
+            particleAlpha: base.particleAlpha ?? DEFAULT_PARTICLE_ALPHA,
         });
     }
 
@@ -375,7 +546,7 @@ export class MapEditorLayersTab {
             name: raw.name ?? (raw.compositionRole ? (ROLE_LABELS[raw.compositionRole] ?? String(raw.compositionRole)) : `Layer ${index + 1}`),
             enabled: raw.enabled ?? true,
             order: raw.order ?? index * 10,
-            file: raw.file ?? this.availableFiles[0] ?? null,
+            file: raw.file ?? null,
             opacity: raw.opacity ?? 1,
             blendMode: raw.blendMode ?? 'alpha',
             emissive: (raw.emissive ?? [1, 1, 1]) as [number, number, number],
@@ -428,12 +599,19 @@ export class MapEditorLayersTab {
                 <input class="layer-enabled" type="checkbox" ${layer.enabled ? 'checked' : ''} title="Activer le layer"/>
                 <img class="layer-thumb" src="${thumbSrc}" onerror="this.style.opacity='0.2'"/>
                 <input class="layer-name" type="text" value="${escapeHtml(layer.name)}"/>
-                <button class="icon-btn layer-up" title="Monter">↑</button>
-                <button class="icon-btn layer-down" title="Descendre">↓</button>
-                <button class="icon-btn layer-copy" title="Dupliquer">⧉</button>
-                <button class="icon-btn layer-delete" title="Supprimer">×</button>
+                <button class="icon-btn layer-up" title="Monter">Up</button>
+                <button class="icon-btn layer-down" title="Descendre">Dn</button>
+                <button class="icon-btn layer-copy" title="Dupliquer">Cp</button>
+                <button class="icon-btn layer-delete" title="Supprimer">Del</button>
             </div>
             <div class="layer-body">
+                <div class="preset-strip">
+                    ${LAYER_CONFIG_PRESETS.map(preset => `
+                        <button type="button" class="preset-btn layer-preset" data-preset="${preset.key}" title="${preset.title}">
+                            ${preset.label}
+                        </button>
+                    `).join('')}
+                </div>
                 ${this.selectControl('Asset', 'layer-file', layer.file ?? '', this.fileOptions(layer.file))}
                 ${this.selectControl('Alpha key', 'layer-alpha-key', layer.alphaKey ?? 'texture', ['texture', 'white', 'magenta', 'black', 'luminance', 'none'])}
                 ${this.selectControl('Blend', 'layer-blend', layer.blendMode, ['alpha', 'additive', 'screen', 'multiply'])}
@@ -462,6 +640,12 @@ export class MapEditorLayersTab {
         card.querySelector('.layer-down')?.addEventListener('click', () => this.moveLayer(index, 1));
         card.querySelector('.layer-copy')?.addEventListener('click', () => this.duplicateLayer(index));
         card.querySelector('.layer-delete')?.addEventListener('click', () => this.deleteLayer(index));
+        card.querySelectorAll('.layer-preset').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const key = (btn as HTMLElement).dataset.preset as LayerConfigPresetKey | undefined;
+                if (key) this.applyConfigPreset(index, key);
+            });
+        });
         card.querySelectorAll('input,select').forEach(el => {
             el.addEventListener('input', () => this.readCard(index, card));
             el.addEventListener('change', () => this.readCard(index, card));
@@ -549,7 +733,7 @@ export class MapEditorLayersTab {
             id: `custom_layer_${Date.now()}`,
             name: `Layer ${stack.layers.length + 1}`,
             order: stack.layers.length * 10,
-            file: this.availableFiles[0] ?? null,
+            file: null,
         }, stack.layers.length));
         stack.layers = this.sortAndRenumber(stack.layers);
         this.commitCurrentStack();
@@ -591,9 +775,39 @@ export class MapEditorLayersTab {
         this.renderLayerList();
     }
 
-    private resetBiomePreset(): void {
-        const base = BIOME_LAYER_PRESETS[this.currentBiome] ?? BIOME_LAYER_PRESETS.forest;
-        this.stacks.set(this.currentBiome, cloneStack(base));
+    private applyConfigPreset(index: number, key: LayerConfigPresetKey): void {
+        const stack = this.ensureStack(this.currentBiome);
+        const layer = stack.layers[index];
+        const preset = LAYER_CONFIG_PRESETS.find(entry => entry.key === key);
+        if (!layer || !preset) return;
+
+        this.applyPresetPatch(layer, preset.patch);
+        this.commitCurrentStack();
+        this.renderLayerList();
+    }
+
+    private applyPresetPatch(layer: SceneLayerAsset, patch: Partial<SceneLayerAsset>): void {
+        if (patch.opacity !== undefined) layer.opacity = patch.opacity;
+        if (patch.blendMode !== undefined) layer.blendMode = patch.blendMode;
+        if (patch.emissive !== undefined) layer.emissive = [...patch.emissive] as [number, number, number];
+        if (patch.xOffset !== undefined) layer.xOffset = patch.xOffset;
+        if (patch.yOffset !== undefined) layer.yOffset = patch.yOffset;
+        if (patch.zOffset !== undefined) layer.zOffset = patch.zOffset;
+        if (patch.widthScale !== undefined) layer.widthScale = patch.widthScale;
+        if (patch.height !== undefined) layer.height = patch.height;
+        if (patch.renderGroup !== undefined) layer.renderGroup = patch.renderGroup;
+        if (patch.cameraOpacity !== undefined) layer.cameraOpacity = { ...patch.cameraOpacity };
+        if (patch.cameraYOffset !== undefined) layer.cameraYOffset = { ...patch.cameraYOffset };
+        if (patch.cameraZOffset !== undefined) layer.cameraZOffset = { ...patch.cameraZOffset };
+        if (patch.parallaxStrength !== undefined) layer.parallaxStrength = patch.parallaxStrength;
+        if (patch.scrollSpeedX !== undefined) layer.scrollSpeedX = patch.scrollSpeedX;
+        if (patch.scrollSpeedY !== undefined) layer.scrollSpeedY = patch.scrollSpeedY;
+        if (patch.stageFit !== undefined) layer.stageFit = patch.stageFit as SceneLayerStageFit;
+        if (patch.alphaKey !== undefined) layer.alphaKey = patch.alphaKey;
+    }
+
+    private clearSceneLayers(): void {
+        this.stacks.set(this.currentBiome, this.createEmptyStack(this.currentBiome));
         this.commitCurrentStack();
         this.renderLayerList();
     }

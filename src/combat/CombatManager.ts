@@ -285,10 +285,13 @@ export class CombatManager {
     if (this.selectedUnitData) {
       const selected = this.selectedUnitData;
       const previousTile = this.findDeploymentTileByUnitId(selected.id);
+      const existingUnitId = existingUnit?.status.unit.id ?? existingUnit?.id;
 
-      if (existingUnit?.id === selected.id) {
-        this.selectedUnitData = null;
-        this.deploymentUI?.clearSelection();
+      if (existingUnitId === selected.id) {
+        this.selectedUnitData = selected;
+        this.deploymentUI?.selectUnit(selected.id);
+        this.hud?.showUnitData(selected);
+        this.hud?.show();
         return;
       }
 
@@ -300,7 +303,6 @@ export class CombatManager {
 
       this.deployUnit(selected, tile);
     } else if (existingUnit) {
-      this.undeployUnit(tile);
       const unitData = existingUnit.status.unit;
       this.selectedUnitData = unitData;
       this.deploymentUI?.selectUnit(unitData.id);
@@ -348,13 +350,13 @@ export class CombatManager {
 
   private findDeploymentTileByUnitId(unitId: string): TileData | null {
     for (const [tile, unit] of this.deploymentMap) {
-      if (unit.id === unitId) return tile;
+      if (unit.id === unitId || unit.status.unit.id === unitId) return tile;
     }
     return null;
   }
 
   private updateDeploymentStatus(): void {
-    const deployedIds = new Set(Array.from(this.deploymentMap.values()).map(u => u.id));
+    const deployedIds = new Set(Array.from(this.deploymentMap.values()).map(u => u.status.unit.id ?? u.id));
     this.deploymentUI?.updateStatus(this.deploymentMap.size, this.maxPlayerUnits, deployedIds);
   }
 

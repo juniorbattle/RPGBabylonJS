@@ -82,3 +82,20 @@ export interface SceneLayerInstance {
     role: SceneLayerRole;
     basePosition: Vector3;
 }
+
+export type SceneGroundLayerMode = 'procedural' | 'texture' | 'color';
+
+export interface SceneGroundLayerConfig {
+    enabled: boolean;
+    mode: SceneGroundLayerMode;
+    textureFile: string | null;
+    color: string;
+    opacity: number;
+    repeatX: number;
+    repeatY: number;
+    xOffset: number;
+    zOffset: number;
+    elevationOffset: number;
+    widthScale: number;
+    depthScale: number;
+}

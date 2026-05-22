@@ -18,7 +18,7 @@ import {
 import { CombatGrid, GridConfig } from '../combat/CombatGrid';
 import { MapEditorLayersTab } from '../editor/MapEditorLayersTab';
 import { SceneLayerManager } from '../rendering/SceneLayerManager';
-import type { SceneLayerInput } from '../rendering/SceneLayerTypes';
+import type { SceneGroundLayerConfig, SceneLayerInput, SceneLayerStack } from '../rendering/SceneLayerTypes';
 
 // ---------------------------------------------------------------------------
 // Types manifest
@@ -307,7 +307,7 @@ class AnimatedPropSprite {
         px: number,
         py: number,
         pz: number,
-        mirror: boolean,
+        flipX: boolean,
         scale: number,
         private sizeForType: (type: string) => { width: number; height: number },
         clipName: string = "idle"
@@ -317,8 +317,7 @@ class AnimatedPropSprite {
         const finalH = base.height * scale;
 
         this.pivot = new TransformNode(`anim_pivot_${Date.now()}_${Math.random()}`, scene);
-        this.pivot.position = new Vector3(mirror ? -px : px, py, pz);
-        if (mirror) this.pivot.scaling.x = -1;
+        this.pivot.position = new Vector3(px, py, pz);
 
         this.texture = new Texture(`/assets/decorations/${def.file}`, scene, false, true, Texture.NEAREST_SAMPLINGMODE);
         this.texture.hasAlpha = true;
@@ -338,6 +337,7 @@ class AnimatedPropSprite {
         this.plane.material = this.mat;
         this.plane.parent = this.pivot;
         this.plane.position.y = finalH / 2;
+        if (flipX) this.plane.scaling.x = -1;
         this.plane.billboardMode = TransformNode.BILLBOARDMODE_ALL;
 
         const clip = def.animations?.[clipName] ?? def.animations?.idle;
@@ -611,6 +611,21 @@ export class MapEditor {
     private terrainPlane!:    Mesh;
     private groundDynTex!:    DynamicTexture;
     private terrainMaterial!: StandardMaterial;
+    private groundTexture: Texture | null = null;
+    private groundLayerConfig: SceneGroundLayerConfig = {
+        enabled: false,
+        mode: "procedural",
+        textureFile: null,
+        color: "#163018",
+        opacity: 0.025,
+        repeatX: 8,
+        repeatY: 8,
+        xOffset: 0,
+        zOffset: 0,
+        elevationOffset: 0,
+        widthScale: 12,
+        depthScale: 12,
+    };
     private layerPreviewRoot!: TransformNode;
     private layerManager: SceneLayerManager | null = null;
     private layersTab: MapEditorLayersTab | null = null;
@@ -728,22 +743,17 @@ export class MapEditor {
 
         // Sol procédural DynamicTexture
         this.terrainPlane = MeshBuilder.CreateGround(
-            "terrainBase", { width: mapW * 12, height: mapD * 12 }, this.scene
+            "terrainBase", { width: mapW, height: mapD }, this.scene
         );
-        this.terrainPlane.position.y = this.currentGridElevation;
-        this.terrainPlane.position.z = mapD / 2;
-        this.terrainPlane.isPickable = true;
+        this.terrainPlane.isPickable = false;
 
         this.groundDynTex    = new DynamicTexture("groundTex", { width: GND, height: GND }, this.scene, true);
-        this.groundDynTex.uScale = 8; this.groundDynTex.vScale = 8;
         this.terrainMaterial = new StandardMaterial("terrainMat", this.scene);
-        this.terrainMaterial.diffuseTexture  = this.groundDynTex;
-        this.terrainMaterial.emissiveColor   = new Color3(0.04, 0.06, 0.03);
         this.terrainMaterial.specularColor   = new Color3(0, 0, 0);
-        this.terrainMaterial.alpha           = 0.025;
         this.terrainMaterial.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
         this.terrainPlane.material = this.terrainMaterial;
         this.repaintGround();
+        this.applyGroundLayerConfig();
 
         // Ciel procédural DynamicTexture
         this.bgPlane = MeshBuilder.CreatePlane("skyBg", { width: 220, height: 110 }, this.scene);
@@ -763,6 +773,72 @@ export class MapEditor {
         this.rebuildSceneLayers();
     }
 
+    private mergeGroundLayerConfig(raw?: Partial<SceneGroundLayerConfig>): SceneGroundLayerConfig {
+        return {
+            ...this.groundLayerConfig,
+            ...(raw ?? {}),
+            enabled: raw?.enabled ?? this.groundLayerConfig.enabled,
+            textureFile: raw?.textureFile ?? null,
+            mode: raw?.mode ?? this.groundLayerConfig.mode,
+        };
+    }
+
+    private colorFromHex(hex: string): Color3 {
+        try { return Color3.FromHexString(hex); }
+        catch { return new Color3(0.08, 0.16, 0.08); }
+    }
+
+    private applyGroundLayerConfig(): void {
+        if (!this.terrainPlane || !this.terrainMaterial) return;
+        const cfg = this.groundLayerConfig;
+        const mapD = this.customD * this.tileSize;
+
+        this.terrainPlane.setEnabled(cfg.enabled);
+        this.terrainPlane.position.x = cfg.xOffset;
+        this.terrainPlane.position.y = this.currentGridElevation + cfg.elevationOffset;
+        this.terrainPlane.position.z = mapD / 2 + cfg.zOffset;
+        this.terrainPlane.scaling.x = Math.max(0.1, cfg.widthScale);
+        this.terrainPlane.scaling.z = Math.max(0.1, cfg.depthScale);
+        this.terrainPlane.isPickable = false;
+
+        if (this.groundTexture) {
+            this.groundTexture.dispose();
+            this.groundTexture = null;
+        }
+
+        const baseColor = this.colorFromHex(cfg.color);
+        this.terrainMaterial.diffuseTexture = null;
+        this.terrainMaterial.diffuseColor = baseColor;
+        this.terrainMaterial.emissiveColor = baseColor.scale(0.35);
+        this.terrainMaterial.alpha = cfg.opacity;
+        this.terrainMaterial.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+        this.terrainMaterial.disableDepthWrite = cfg.opacity < 1;
+
+        if (cfg.mode === "texture" && cfg.textureFile) {
+            this.groundTexture = new Texture(
+                this.backgroundPath(cfg.textureFile),
+                this.scene,
+                false,
+                true,
+                Texture.BILINEAR_SAMPLINGMODE
+            );
+            this.groundTexture.wrapU = Texture.WRAP_ADDRESSMODE;
+            this.groundTexture.wrapV = Texture.WRAP_ADDRESSMODE;
+            this.groundTexture.uScale = cfg.repeatX;
+            this.groundTexture.vScale = cfg.repeatY;
+            this.groundTexture.hasAlpha = true;
+            this.terrainMaterial.diffuseTexture = this.groundTexture;
+            this.terrainMaterial.useAlphaFromDiffuseTexture = true;
+            this.terrainMaterial.emissiveColor = new Color3(0.03, 0.05, 0.03);
+        } else if (cfg.mode === "procedural") {
+            this.groundDynTex.uScale = cfg.repeatX;
+            this.groundDynTex.vScale = cfg.repeatY;
+            this.terrainMaterial.diffuseTexture = this.groundDynTex;
+            this.terrainMaterial.useAlphaFromDiffuseTexture = false;
+            this.terrainMaterial.emissiveColor = new Color3(0.04, 0.06, 0.03);
+        }
+    }
+
     private rebuildSceneLayers(overrides?: SceneLayerInput): void {
         if (!this.layerPreviewRoot) return;
         const mapW = this.customW * this.tileSize;
@@ -779,6 +855,17 @@ export class MapEditor {
             this.currentBiome,
             overrides ?? this.layersTab?.getSceneLayersForBiome(this.currentBiome)
         );
+    }
+
+    private createEmptySceneLayerStack(): SceneLayerStack {
+        return {
+            id: `${this.currentBiome}_empty_layers`,
+            biome: this.currentBiome,
+            layers: [],
+            particleColor: [0.4, 1, 0.2],
+            particleCount: 0,
+            particleAlpha: [0.06, 0.2],
+        };
     }
 
     public repaintGround(): void {
@@ -804,7 +891,6 @@ export class MapEditor {
         this.repaintSky();
         this.rebuildSceneLayers();
         this.refreshAssetListUI();
-        this.updatePreviews();
     }
 
     // -------------------------------------------------------------------------
@@ -1090,6 +1176,12 @@ export class MapEditor {
     // -------------------------------------------------------------------------
 
     private propPath(f: string): string { return `/assets/decorations/${f}`; }
+    private backgroundPath(f: string): string { return `/assets/backgrounds/${f}`; }
+
+    private getMirrorX(x: number): number {
+        const { xMin, xMax } = this.getGridBounds();
+        return xMin + xMax - x;
+    }
 
     private getBasePropSize(type: string): { width: number; height: number } {
         let width = 1.8, height = 2.2;
@@ -1112,14 +1204,14 @@ export class MapEditor {
     private spawnAnimatedProp(
         def: AnimatedPropDef,
         pX: number, pY: number, pZ: number,
-        mirror: boolean,
+        flipX: boolean,
         scale: number = 1.0,
         isProcedural: boolean = false,
         layer: PropLayer = this.selectedLayer,
         animClip: string = "idle"
     ): void {
         const sprite = new AnimatedPropSprite(
-            this.scene, def, pX, pY, pZ, mirror, scale,
+            this.scene, def, pX, pY, pZ, flipX, scale,
             type => this.getBasePropSize(type),
             animClip
         );
@@ -1127,9 +1219,9 @@ export class MapEditor {
         (sprite.pivot as any).isProcedural = isProcedural;
         (sprite.pivot as any).isAnimated = true;
         (sprite.pivot as any).editorMetaData = {
-            assetName: def.file, isRightSide: mirror,
+            assetName: def.file, isFlippedX: flipX,
             animated: true, animClip, layer,
-            x: Number((mirror ? -pX : pX).toFixed(3)),
+            x: Number(pX.toFixed(3)),
             y: Number(pY.toFixed(3)),
             z: Number(pZ.toFixed(3)),
             scale: Number(scale.toFixed(3)),
@@ -1139,7 +1231,7 @@ export class MapEditor {
 
     private spawnProp(
         assetFile: string, pX: number, pY: number, pZ: number,
-        mirror: boolean,
+        flipX: boolean,
         scale: number = 1.0,
         isProcedural: boolean = false,
         layer: PropLayer = this.selectedLayer
@@ -1148,12 +1240,10 @@ export class MapEditor {
         const type = propDef?.type ?? "";
         const baseSize = this.getBasePropSize(type);
         const fW = baseSize.width * scale, fH = baseSize.height * scale;
-        const actX = mirror ? -pX : pX;
 
         const pivot = new TransformNode(`ep_${Date.now()}_${Math.random()}`, this.scene);
-        pivot.position = new Vector3(actX, pY, pZ);
+        pivot.position = new Vector3(pX, pY, pZ);
         pivot.parent   = this.propsRoot;
-        if (mirror) pivot.scaling.x = -1;
         (pivot as any).isProcedural = isProcedural;
 
         const mat = new StandardMaterial(`pm_${Date.now()}`, this.scene);
@@ -1172,12 +1262,13 @@ export class MapEditor {
         plane.material      = mat;
         plane.parent        = pivot;
         plane.position.y    = fH / 2;
+        if (flipX) plane.scaling.x = -1;
         plane.billboardMode = 7;
 
         (pivot as any).editorMetaData = {
-            assetName: assetFile, isRightSide: mirror,
+            assetName: assetFile, isFlippedX: flipX,
             animated: false, layer,
-            x: Number(actX.toFixed(3)), y: Number(pY.toFixed(3)), z: Number(pZ.toFixed(3)),
+            x: Number(pX.toFixed(3)), y: Number(pY.toFixed(3)), z: Number(pZ.toFixed(3)),
             scale: Number(scale.toFixed(3)),
         };
     }
@@ -1196,9 +1287,12 @@ export class MapEditor {
     // -------------------------------------------------------------------------
 
     private buildHTMLToolbar(): void {
-        const biomeKeys = Object.keys(this.manifest?.biomes ?? { forest:1,plains:1,mountain:1,swamp:1,ruins:1,city:1 });
-
         const ui = document.createElement("div");
+        const bgFiles = this.manifest?.backgrounds ?? [];
+        const groundTextureOptions = [
+            `<option value="">Aucune image</option>`,
+            ...bgFiles.map(file => `<option value="${file}" ${file === this.groundLayerConfig.textureFile ? "selected" : ""}>${file}</option>`)
+        ].join("");
         ui.id = "editor-ui";
         ui.style.cssText = `
             position:absolute;top:10px;left:10px;width:272px;
@@ -1225,7 +1319,7 @@ export class MapEditor {
         #editor-ui .val{min-width:36px;text-align:right;color:#dce8f4;font-weight:600;font-size:10px;}
         #editor-ui input[type=range]{flex:2;-webkit-appearance:none;height:3px;background:rgba(255,255,255,.12);border-radius:2px;outline:none;}
         #editor-ui input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;background:#5a8fcc;border-radius:50%;cursor:pointer;}
-        #editor-ui select,#editor-ui input[type=number]{background:rgba(255,255,255,.07);color:#c4ccd6;
+        #editor-ui select,#editor-ui input[type=number],#editor-ui input[type=color]{background:rgba(255,255,255,.07);color:#c4ccd6;
             border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:3px 6px;font-size:11px;}
         #editor-ui .btn-row{display:flex;gap:5px;padding:7px 13px;}
         #editor-ui .btn{flex:1;padding:7px 0;border:none;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;}
@@ -1233,10 +1327,10 @@ export class MapEditor {
         #editor-ui .anim-badge{color:#d8b4fe;font-size:9px;font-weight:800;margin-left:3px;}
         </style>
 
-        <h2>🌍 GPA Editor</h2>
+        <h2>GPA Map Editor</h2>
         <div class="mode-bar">
-            <button id="modeCam"   class="btn" style="background:#1a3570;color:#90c0f8;">🎥 Cam</button>
-            <button id="modeBrush" class="btn" style="background:#1e2030;color:#8090a8;">🖌 Placer</button>
+            <button id="modeCam"   class="btn" style="background:#1a3570;color:#90c0f8;">Cam</button>
+            <button id="modeBrush" class="btn" style="background:#1e2030;color:#8090a8;">Placer</button>
         </div>
         <div class="tabs">
             <button class="tab-btn active" data-tab="tab-layers">Layers</button>
@@ -1262,69 +1356,68 @@ export class MapEditor {
                     <span class="val" id="gridElevationVal">${this.currentGridElevation.toFixed(1)}</span>
                 </div>
             </div>
-        </div>
-
-        <!-- BIOME -->
-        <div id="tab-biome" class="editor-tab" style="display:none;">
             <div class="sec">
-                <div class="sec-t">Biome actif</div>
+                <div class="sec-t">Sol horizontal</div>
                 <div class="row">
-                    <label>Biome</label>
-                    <select id="biomeSelectLegacy" style="flex:2;">
-                        ${biomeKeys.map(b=>`<option value="${b}" ${b===this.currentBiome?"selected":""}>${b}</option>`).join("")}
+                    <input type="checkbox" id="groundEnabled" ${this.groundLayerConfig.enabled ? "checked" : ""}/>
+                    <label for="groundEnabled" style="cursor:pointer;color:#b0bcc8;">Activer le sol</label>
+                </div>
+                <div class="row">
+                    <label>Mode</label>
+                    <select id="groundMode" style="flex:2;">
+                        <option value="procedural" ${this.groundLayerConfig.mode === "procedural" ? "selected" : ""}>procedural</option>
+                        <option value="texture" ${this.groundLayerConfig.mode === "texture" ? "selected" : ""}>texture repeat</option>
+                        <option value="color" ${this.groundLayerConfig.mode === "color" ? "selected" : ""}>couleur</option>
                     </select>
                 </div>
-                <div style="display:flex;gap:4px;margin-top:6px;">
-                    <div style="flex:1;"><div style="font-size:9px;color:#4a6a8a;margin-bottom:2px;">Ciel</div>
-                        <canvas id="skyPreviewLegacy" width="118" height="44" style="width:100%;border-radius:4px;border:1px solid rgba(255,255,255,.07);"></canvas></div>
-                    <div style="flex:1;"><div style="font-size:9px;color:#4a6a8a;margin-bottom:2px;">Sol</div>
-                        <canvas id="groundPreviewLegacy" width="118" height="44" style="width:100%;border-radius:4px;border:1px solid rgba(255,255,255,.07);"></canvas></div>
+                <div class="row">
+                    <label>Image</label>
+                    <select id="groundTexture" style="flex:2;">${groundTextureOptions}</select>
                 </div>
-            </div>
-
-            <div class="sec">
-                <div class="sec-t">Ciel</div>
-                <div class="row"><label>Cloud seed</label>
-                    <input type="number" id="cloudSeedInputLegacy" value="${this.cloudSeed}" min="0" max="99999" style="width:58px;"/>
-                    <button id="btnRCLegacy" class="btn" style="background:#102030;color:#60a0e0;padding:3px 7px;font-size:11px;">🎲</button>
+                <div class="row">
+                    <label>Couleur</label>
+                    <input type="color" id="groundColor" value="${this.groundLayerConfig.color}" style="width:62px;height:26px;"/>
                 </div>
-                <button id="btnRepaintSkyLegacy" class="btn" style="background:#0d2035;color:#50a0d8;width:100%;padding:6px 0;">↻ Repaint Sky</button>
-            </div>
-
-            <div class="sec">
-                <div class="sec-t">Sol</div>
-                <div class="row"><label>Ground seed</label>
-                    <input type="number" id="groundSeedInputLegacy" value="${this.groundSeed}" min="0" max="99999" style="width:58px;"/>
-                    <button id="btnRGLegacy" class="btn" style="background:#102030;color:#60a0e0;padding:3px 7px;font-size:11px;">🎲</button>
+                <div class="row"><label>Opacite</label>
+                    <input type="range" id="groundOpacity" min="0" max="1" step="0.01" value="${this.groundLayerConfig.opacity}"/>
+                    <span class="val" id="groundOpacityVal">${this.groundLayerConfig.opacity.toFixed(2)}</span>
                 </div>
-                <button id="btnRepaintGroundLegacy" class="btn" style="background:#0d2a10;color:#50d060;width:100%;padding:6px 0;">↻ Repaint Sol</button>
-            </div>
-
-            <div class="sec">
-                <div class="sec-t">Décors — composition procédurale</div>
-                <div style="font-size:9px;color:#4a5a6a;margin-bottom:6px;line-height:1.5;">
-                    Groupes composites : anchor imposant · fills · accents<br/>
-                    back (imposant) · mid (moyen) · front (clairsemé)
+                <div class="row"><label>Repeat X</label>
+                    <input type="range" id="groundRepeatX" min="1" max="64" step="1" value="${this.groundLayerConfig.repeatX}"/>
+                    <span class="val" id="groundRepeatXVal">${this.groundLayerConfig.repeatX.toFixed(0)}</span>
                 </div>
-                <div class="row"><label>Densité globale</label>
-                    <input type="range" id="procDensityLegacy" min="0.1" max="2.0" step="0.05" value="${this.procDensity}"/>
-                    <span class="val" id="valProcDensityLegacy">${this.procDensity.toFixed(2)}</span>
+                <div class="row"><label>Repeat Y</label>
+                    <input type="range" id="groundRepeatY" min="1" max="64" step="1" value="${this.groundLayerConfig.repeatY}"/>
+                    <span class="val" id="groundRepeatYVal">${this.groundLayerConfig.repeatY.toFixed(0)}</span>
                 </div>
-                <div class="row"><label>Seed</label>
-                    <input type="number" id="procSeedInputLegacy" value="${this.procSeed}" min="0" max="99999" style="width:58px;"/>
-                    <button id="btnRSLegacy" class="btn" style="background:#102030;color:#60a0e0;padding:3px 7px;font-size:11px;">🎲</button>
+                <div class="row"><label>Offset X</label>
+                    <input type="range" id="groundOffsetX" min="-80" max="80" step="0.5" value="${this.groundLayerConfig.xOffset}"/>
+                    <span class="val" id="groundOffsetXVal">${this.groundLayerConfig.xOffset.toFixed(1)}</span>
                 </div>
-                <button id="btnProcRebuildLegacy" class="btn" style="background:#0f3520;color:#50d880;width:100%;padding:8px 0;margin-top:4px;">
-                    ↻ Générer les décors
-                </button>
+                <div class="row"><label>Offset Z</label>
+                    <input type="range" id="groundOffsetZ" min="-100" max="140" step="0.5" value="${this.groundLayerConfig.zOffset}"/>
+                    <span class="val" id="groundOffsetZVal">${this.groundLayerConfig.zOffset.toFixed(1)}</span>
+                </div>
+                <div class="row"><label>Offset Y</label>
+                    <input type="range" id="groundElevationOffset" min="-10" max="10" step="0.1" value="${this.groundLayerConfig.elevationOffset}"/>
+                    <span class="val" id="groundElevationOffsetVal">${this.groundLayerConfig.elevationOffset.toFixed(1)}</span>
+                </div>
+                <div class="row"><label>Largeur</label>
+                    <input type="range" id="groundWidthScale" min="0.5" max="40" step="0.5" value="${this.groundLayerConfig.widthScale}"/>
+                    <span class="val" id="groundWidthScaleVal">x${this.groundLayerConfig.widthScale.toFixed(1)}</span>
+                </div>
+                <div class="row"><label>Profondeur</label>
+                    <input type="range" id="groundDepthScale" min="0.5" max="40" step="0.5" value="${this.groundLayerConfig.depthScale}"/>
+                    <span class="val" id="groundDepthScaleVal">x${this.groundLayerConfig.depthScale.toFixed(1)}</span>
+                </div>
             </div>
         </div>
 
         <!-- OBJETS -->
         <div id="tab-props" class="editor-tab" style="display:none;">
             <div class="sec">
-                <div class="sec-t">Pinceau manuel</div>
-                <div class="row"><label>Échelle</label>
+                <div class="sec-t">Props secondaires</div>
+                <div class="row"><label>Echelle</label>
                     <input type="range" id="objScale" min="0.1" max="5" step="0.05" value="1"/>
                     <span class="val" id="valScale">x1.00</span>
                 </div>
@@ -1341,12 +1434,12 @@ export class MapEditor {
                 </div>
                 <div class="row">
                     <input type="checkbox" id="symToggle"/>
-                    <label for="symToggle" style="cursor:pointer;color:#b0bcc8;font-size:11px;">Miroir axe X</label>
+                    <label for="symToggle" style="cursor:pointer;color:#b0bcc8;font-size:11px;">Dupliquer miroir X</label>
                 </div>
-                <div style="font-size:10px;color:#506070;margin-top:2px;">Clic G: poser · Clic D: supprimer</div>
+                <div style="font-size:10px;color:#506070;margin-top:2px;">Clic G: poser - Clic D: supprimer</div>
             </div>
-            <div class="sec-t" style="padding:0 0 5px;">Assets — <b id="lblBiomeAssets">${this.currentBiome}</b></div>
-            <div style="font-size:9px;color:#506070;margin-bottom:5px;">Tous les props sont utilisables dans tous les biomes.</div>
+            <div class="sec-t" style="padding:0 0 5px;">Bibliotheque props</div>
+            <div style="font-size:9px;color:#506070;margin-bottom:5px;">Secondaire : les layers portent le decor principal. Tous les props restent utilisables dans tous les biomes.</div>
             <div class="sec-t" style="padding:0 0 4px;">Animes <span class="anim-badge">ANIM</span></div>
             <div id="asset-list-anim" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;
                 max-height:120px;overflow-y:auto;border:1px solid #2a1a4a;
@@ -1367,16 +1460,15 @@ export class MapEditor {
         <!-- I/O -->
         <div id="tab-io" class="editor-tab" style="display:none;">
             <div class="btn-row" style="flex-direction:column;gap:7px;">
-                <button id="btnExport" class="btn" style="background:#1a4a1a;color:#70e070;">💾 Exporter JSON</button>
+                <button id="btnExport" class="btn" style="background:#1a4a1a;color:#70e070;">Exporter JSON</button>
                 <input type="file" id="fileImport" accept=".json" style="display:none;"/>
-                <button id="btnImportTrigger" class="btn" style="background:#4a3010;color:#f0b060;">📂 Importer JSON</button>
+                <button id="btnImportTrigger" class="btn" style="background:#4a3010;color:#f0b060;">Importer JSON</button>
             </div>
         </div>
         `;
 
         document.body.appendChild(ui);
         this.bindToolbarEvents(ui);
-        this.updatePreviews();
     }
 
     private buildAssetListHTML(animated: boolean): string {
@@ -1402,44 +1494,110 @@ export class MapEditor {
         if (anim) anim.innerHTML = this.buildAssetListHTML(true);
         const stat = document.getElementById("asset-list-static");
         if (stat) stat.innerHTML = this.buildAssetListHTML(false);
-        const lbl = document.getElementById("lblBiomeAssets");
-        if (lbl) lbl.textContent = this.currentBiome;
         this.bindAssetBtns(document.getElementById("editor-ui")!);
-    }
-
-    private updatePreviews(): void {
-        const skyC = document.getElementById("skyPreview") as HTMLCanvasElement;
-        if (skyC) {
-            const def = this.getBiomeDef(this.currentBiome);
-            if (def) {
-                const tmp = document.createElement("canvas"); tmp.width=SKY_W; tmp.height=SKY_H;
-                paintSky(tmp.getContext("2d")!, def, this.cloudSeed);
-                const ctx = skyC.getContext("2d")!;
-                ctx.clearRect(0,0,skyC.width,skyC.height);
-                ctx.drawImage(tmp, 0, 0, skyC.width, skyC.height);
-            }
-        }
-        const gndC = document.getElementById("groundPreview") as HTMLCanvasElement;
-        if (gndC) {
-            const def = this.getBiomeDef(this.currentBiome);
-            const fallback: FloorConfig = { baseColor:"#2a5c18",stripeColor:"#1e4a10",accentColor:"#3a7020",stripeWidth:2,noiseAmp:10,noiseFreq:0.09 };
-            const cfg = (def?.floor && typeof def.floor==='object') ? def.floor as FloorConfig : fallback;
-            const tmp = document.createElement("canvas"); tmp.width=GND; tmp.height=GND;
-            paintGround(tmp.getContext("2d")!, cfg, this.groundSeed);
-            const ctx = gndC.getContext("2d")!;
-            ctx.clearRect(0,0,gndC.width,gndC.height);
-            ctx.drawImage(tmp, 0, 0, gndC.width, gndC.height);
-        }
     }
 
     // -------------------------------------------------------------------------
     // Events
     // -------------------------------------------------------------------------
 
-    private bindToolbarEvents(ui: HTMLElement): void {
-        const byId = <T extends HTMLElement>(id: string): T | null =>
-            document.getElementById(id) as T | null;
+    private syncGroundLayerControls(): void {
+        const setInput = (id: string, value: string | number | boolean) => {
+            const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+            if (!el) return;
+            if (typeof value === "boolean" && "checked" in el) {
+                (el as HTMLInputElement).checked = value;
+            } else {
+                el.value = String(value);
+            }
+        };
 
+        setInput("groundEnabled", this.groundLayerConfig.enabled);
+        setInput("groundMode", this.groundLayerConfig.mode);
+        setInput("groundTexture", this.groundLayerConfig.textureFile ?? "");
+        setInput("groundColor", this.groundLayerConfig.color);
+        setInput("groundOpacity", this.groundLayerConfig.opacity);
+        setInput("groundRepeatX", this.groundLayerConfig.repeatX);
+        setInput("groundRepeatY", this.groundLayerConfig.repeatY);
+        setInput("groundOffsetX", this.groundLayerConfig.xOffset);
+        setInput("groundOffsetZ", this.groundLayerConfig.zOffset);
+        setInput("groundElevationOffset", this.groundLayerConfig.elevationOffset);
+        setInput("groundWidthScale", this.groundLayerConfig.widthScale);
+        setInput("groundDepthScale", this.groundLayerConfig.depthScale);
+
+        [
+            ["groundOpacityVal", this.groundLayerConfig.opacity.toFixed(2)],
+            ["groundRepeatXVal", this.groundLayerConfig.repeatX.toFixed(0)],
+            ["groundRepeatYVal", this.groundLayerConfig.repeatY.toFixed(0)],
+            ["groundOffsetXVal", this.groundLayerConfig.xOffset.toFixed(1)],
+            ["groundOffsetZVal", this.groundLayerConfig.zOffset.toFixed(1)],
+            ["groundElevationOffsetVal", this.groundLayerConfig.elevationOffset.toFixed(1)],
+            ["groundWidthScaleVal", `x${this.groundLayerConfig.widthScale.toFixed(1)}`],
+            ["groundDepthScaleVal", `x${this.groundLayerConfig.depthScale.toFixed(1)}`],
+        ].forEach(([id, value]) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        });
+    }
+
+    private bindGroundLayerControls(): void {
+        const read = () => {
+            const getInput = (id: string) => document.getElementById(id) as HTMLInputElement | null;
+            const getSelect = (id: string) => document.getElementById(id) as HTMLSelectElement | null;
+            const numberValue = (id: string, fallback: number): number => {
+                const value = parseFloat(getInput(id)?.value ?? "");
+                return Number.isFinite(value) ? value : fallback;
+            };
+
+            this.groundLayerConfig = {
+                enabled: getInput("groundEnabled")?.checked ?? this.groundLayerConfig.enabled,
+                mode: (getSelect("groundMode")?.value as SceneGroundLayerConfig["mode"]) ?? this.groundLayerConfig.mode,
+                textureFile: getSelect("groundTexture")?.value || null,
+                color: getInput("groundColor")?.value || this.groundLayerConfig.color,
+                opacity: numberValue("groundOpacity", this.groundLayerConfig.opacity),
+                repeatX: numberValue("groundRepeatX", this.groundLayerConfig.repeatX),
+                repeatY: numberValue("groundRepeatY", this.groundLayerConfig.repeatY),
+                xOffset: numberValue("groundOffsetX", this.groundLayerConfig.xOffset),
+                zOffset: numberValue("groundOffsetZ", this.groundLayerConfig.zOffset),
+                elevationOffset: numberValue("groundElevationOffset", this.groundLayerConfig.elevationOffset),
+                widthScale: numberValue("groundWidthScale", this.groundLayerConfig.widthScale),
+                depthScale: numberValue("groundDepthScale", this.groundLayerConfig.depthScale),
+            };
+
+            const labels: Array<[string, string]> = [
+                ["groundOpacityVal", this.groundLayerConfig.opacity.toFixed(2)],
+                ["groundRepeatXVal", this.groundLayerConfig.repeatX.toFixed(0)],
+                ["groundRepeatYVal", this.groundLayerConfig.repeatY.toFixed(0)],
+                ["groundOffsetXVal", this.groundLayerConfig.xOffset.toFixed(1)],
+                ["groundOffsetZVal", this.groundLayerConfig.zOffset.toFixed(1)],
+                ["groundElevationOffsetVal", this.groundLayerConfig.elevationOffset.toFixed(1)],
+                ["groundWidthScaleVal", `x${this.groundLayerConfig.widthScale.toFixed(1)}`],
+                ["groundDepthScaleVal", `x${this.groundLayerConfig.depthScale.toFixed(1)}`],
+            ];
+            labels.forEach(([id, text]) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = text;
+            });
+            this.applyGroundLayerConfig();
+        };
+
+        [
+            "groundEnabled",
+            "groundMode",
+            "groundTexture",
+            "groundColor",
+            "groundOpacity",
+            "groundRepeatX",
+            "groundRepeatY",
+            "groundOffsetX",
+            "groundOffsetZ",
+            "groundElevationOffset",
+            "groundWidthScale",
+            "groundDepthScale",
+        ].forEach(id => document.getElementById(id)?.addEventListener("input", read));
+    }
+
+    private bindToolbarEvents(ui: HTMLElement): void {
         ui.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', e => {
                 ui.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -1485,6 +1643,7 @@ export class MapEditor {
         const onGridChange = () => {
             this.customW = parseInt((document.getElementById("gridW") as HTMLInputElement).value);
             this.customD = parseInt((document.getElementById("gridD") as HTMLInputElement).value);
+            this.applyGroundLayerConfig();
             this.rebuildCombatGrid();
             this.camera.target = new Vector3((this.customW*this.tileSize)/2, this.currentGridElevation, (this.customD*this.tileSize)/2);
             this.rebuildSceneLayers();
@@ -1494,45 +1653,11 @@ export class MapEditor {
 
         document.getElementById("gridElevationSlider")!.addEventListener("input", e => {
             this.currentGridElevation = parseFloat((e.target as HTMLInputElement).value);
-            this.terrainPlane.position.y = this.currentGridElevation;
+            this.applyGroundLayerConfig();
             document.getElementById("gridElevationVal")!.textContent = this.currentGridElevation.toFixed(1);
             this.rebuildCombatGrid();
         });
-
-        byId<HTMLSelectElement>("biomeSelect")?.addEventListener("change", e => {
-            this.currentBiome = (e.target as HTMLSelectElement).value;
-            this.refreshBiome(this.currentBiome);
-            this.layersTab?.setBiome(this.currentBiome);
-        });
-
-        byId<HTMLInputElement>("cloudSeedInput")?.addEventListener("change", e => { this.cloudSeed = parseInt((e.target as HTMLInputElement).value)||0; });
-        byId<HTMLButtonElement>("btnRC")?.addEventListener("click", () => {
-            this.cloudSeed=Math.floor(Math.random()*99999);
-            const input = byId<HTMLInputElement>("cloudSeedInput");
-            if (input) input.value=String(this.cloudSeed);
-        });
-        byId<HTMLButtonElement>("btnRepaintSky")?.addEventListener("click", () => { this.repaintSky(); this.updatePreviews(); });
-
-        byId<HTMLInputElement>("groundSeedInput")?.addEventListener("change", e => { this.groundSeed = parseInt((e.target as HTMLInputElement).value)||1; });
-        byId<HTMLButtonElement>("btnRG")?.addEventListener("click", () => {
-            this.groundSeed=Math.floor(Math.random()*99999)+1;
-            const input = byId<HTMLInputElement>("groundSeedInput");
-            if (input) input.value=String(this.groundSeed);
-        });
-        byId<HTMLButtonElement>("btnRepaintGround")?.addEventListener("click", () => { this.repaintGround(); this.updatePreviews(); });
-
-        byId<HTMLInputElement>("procDensity")?.addEventListener("input", e => {
-            this.procDensity=parseFloat((e.target as HTMLInputElement).value);
-            const val = byId<HTMLElement>("valProcDensity");
-            if (val) val.textContent=this.procDensity.toFixed(2);
-        });
-        byId<HTMLInputElement>("procSeedInput")?.addEventListener("change", e => { this.procSeed=parseInt((e.target as HTMLInputElement).value)||0; });
-        byId<HTMLButtonElement>("btnRS")?.addEventListener("click", () => {
-            this.procSeed=Math.floor(Math.random()*99999);
-            const input = byId<HTMLInputElement>("procSeedInput");
-            if (input) input.value=String(this.procSeed);
-        });
-        byId<HTMLButtonElement>("btnProcRebuild")?.addEventListener("click", () => { this.runProceduralGroundProps(); });
+        this.bindGroundLayerControls();
 
         document.getElementById("objScale")!.addEventListener("input", e => {
             this.customScale=parseFloat((e.target as HTMLInputElement).value);
@@ -1570,7 +1695,7 @@ export class MapEditor {
         this.scene.onPointerDown = (evt, pickInfo) => {
             if (!this.isBrushMode) return;
             if (!pickInfo.hit || !pickInfo.pickedMesh) return;
-            const isSurface = pickInfo.pickedMesh.name.startsWith("tile_") || pickInfo.pickedMesh.name === "terrainBase";
+            const isSurface = pickInfo.pickedMesh.name.startsWith("tile_");
             if (evt.button === 2) {
                 const p = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.name.startsWith("ep_") || m.name.startsWith("anim_plane_"));
                 if (p?.hit && p.pickedMesh?.parent) this.disposeChild(p.pickedMesh.parent);
@@ -1590,12 +1715,12 @@ export class MapEditor {
                     if (!def) return;
                     this.spawnAnimatedProp(def, pt.x, py, pt.z, false, this.customScale, false, this.selectedLayer);
                     if (this.symmetryEnabled) {
-                        this.spawnAnimatedProp(def, pt.x, py, pt.z, true, this.customScale, false, this.selectedLayer);
+                        this.spawnAnimatedProp(def, this.getMirrorX(pt.x), py, pt.z, false, this.customScale, false, this.selectedLayer);
                     }
                 } else {
                     this.spawnProp(this.selectedAsset, pt.x, py, pt.z, false, this.customScale, false, this.selectedLayer);
                     if (this.symmetryEnabled) {
-                        this.spawnProp(this.selectedAsset, pt.x, py, pt.z, true, this.customScale, false, this.selectedLayer);
+                        this.spawnProp(this.selectedAsset, this.getMirrorX(pt.x), py, pt.z, false, this.customScale, false, this.selectedLayer);
                     }
                 }
             }
@@ -1616,23 +1741,31 @@ export class MapEditor {
                 file: m.assetName,
                 x: m.x, y: m.y, z: m.z,
                 scaleMult: m.scale ?? 1,
-                scaleX: m.isRightSide ? -1 : 1,
+                scaleX: (m.isFlippedX ?? m.isRightSide) ? -1 : 1,
                 layer: m.layer ?? "mid",
                 animated: m.animated ?? false,
                 animClip: m.animClip ?? null,
             });
         });
         const out: any = {
-            version:"4.1", gridW:this.customW, gridD:this.customD,
+            version:"4.2", gridW:this.customW, gridD:this.customD,
             gridElevation: Number(this.currentGridElevation.toFixed(2)),
+            groundLayer: {
+                ...this.groundLayerConfig,
+                opacity: Number(this.groundLayerConfig.opacity.toFixed(3)),
+                repeatX: Number(this.groundLayerConfig.repeatX.toFixed(2)),
+                repeatY: Number(this.groundLayerConfig.repeatY.toFixed(2)),
+                xOffset: Number(this.groundLayerConfig.xOffset.toFixed(3)),
+                zOffset: Number(this.groundLayerConfig.zOffset.toFixed(3)),
+                elevationOffset: Number(this.groundLayerConfig.elevationOffset.toFixed(3)),
+                widthScale: Number(this.groundLayerConfig.widthScale.toFixed(3)),
+                depthScale: Number(this.groundLayerConfig.depthScale.toFixed(3)),
+            },
             biome:  this.currentBiome,
             decorations: decorList,
             proceduralMeta: { seed:this.procSeed, density:this.procDensity, cloudSeed:this.cloudSeed, groundSeed:this.groundSeed }
         };
-        const sceneLayers = this.layersTab?.getSceneLayersForExport();
-        if (sceneLayers?.layers?.length) {
-            out.sceneLayers = sceneLayers;
-        }
+        out.sceneLayers = this.layersTab?.getSceneLayersForExport() ?? this.createEmptySceneLayerStack();
         const blob = new Blob([JSON.stringify(out,null,2)],{type:"application/json"});
         const url  = URL.createObjectURL(blob);
         const a    = document.createElement("a");
@@ -1648,10 +1781,8 @@ export class MapEditor {
             try {
                 const d = JSON.parse(e.target?.result as string);
                 this.propsRoot.getChildren().forEach(c => this.disposeChild(c));
-                const biomeSelect = document.getElementById("biomeSelect") as HTMLSelectElement | null;
                 if (d.biome) {
                     this.currentBiome=d.biome;
-                    if (biomeSelect) biomeSelect.value=d.biome;
                     this.refreshBiome(d.biome);
                     this.layersTab?.setBiome(d.biome);
                 }
@@ -1659,7 +1790,6 @@ export class MapEditor {
                     const sceneLayerBiome = d.sceneLayers.biome ?? d.biome ?? this.currentBiome;
                     if (!d.biome && sceneLayerBiome) {
                         this.currentBiome = sceneLayerBiome;
-                        if (biomeSelect) biomeSelect.value = sceneLayerBiome;
                         this.refreshBiome(sceneLayerBiome);
                     }
                     this.layersTab?.loadSceneLayersFromJSON(d.sceneLayers);
@@ -1667,11 +1797,24 @@ export class MapEditor {
                 } else if (d.layerOverrides) {
                     this.layersTab?.loadOverridesFromJSON(d.layerOverrides);
                     this.rebuildSceneLayers();
+                } else {
+                    const emptyLayers = this.createEmptySceneLayerStack();
+                    this.layersTab?.loadSceneLayersFromJSON(emptyLayers);
+                    this.rebuildSceneLayers(emptyLayers);
+                }
+                if (d.groundLayer) {
+                    this.groundLayerConfig = this.mergeGroundLayerConfig(d.groundLayer);
+                    this.applyGroundLayerConfig();
+                    this.syncGroundLayerControls();
+                } else {
+                    this.groundLayerConfig = this.mergeGroundLayerConfig({ enabled: false, textureFile: null });
+                    this.applyGroundLayerConfig();
+                    this.syncGroundLayerControls();
                 }
                 const importedGridElevation = d.gridElevation ?? d.floorY;
                 if (importedGridElevation!=null) {
                     this.currentGridElevation=importedGridElevation;
-                    this.terrainPlane.position.y=importedGridElevation;
+                    this.applyGroundLayerConfig();
                     const gridElevationSlider = document.getElementById("gridElevationSlider") as HTMLInputElement | null;
                     if (gridElevationSlider) gridElevationSlider.value=String(importedGridElevation);
                     const gridElevationVal = document.getElementById("gridElevationVal");
@@ -1684,21 +1827,18 @@ export class MapEditor {
                     this.customD=d.gridD;
                     (document.getElementById("gridW") as HTMLInputElement).value=String(d.gridW);
                     (document.getElementById("gridD") as HTMLInputElement).value=String(d.gridD);
+                    this.applyGroundLayerConfig();
                     this.rebuildCombatGrid();
                     this.rebuildSceneLayers();
                 }
                 if (d.proceduralMeta) {
                     const m=d.proceduralMeta;
-                    const procSeedInput = document.getElementById("procSeedInput") as HTMLInputElement | null;
-                    const procDensityInput = document.getElementById("procDensity") as HTMLInputElement | null;
-                    const procDensityVal = document.getElementById("valProcDensity");
-                    const cloudSeedInput = document.getElementById("cloudSeedInput") as HTMLInputElement | null;
-                    const groundSeedInput = document.getElementById("groundSeedInput") as HTMLInputElement | null;
-                    if (m.seed!=null)       { this.procSeed=m.seed;       if (procSeedInput) procSeedInput.value=String(m.seed); }
-                    if (m.density!=null)    { this.procDensity=m.density; if (procDensityInput) procDensityInput.value=String(m.density); if (procDensityVal) procDensityVal.textContent=m.density.toFixed(2); }
-                    if (m.cloudSeed!=null)  { this.cloudSeed=m.cloudSeed;  if (cloudSeedInput) cloudSeedInput.value=String(m.cloudSeed); }
-                    if (m.groundSeed!=null) { this.groundSeed=m.groundSeed;if (groundSeedInput) groundSeedInput.value=String(m.groundSeed); }
-                    this.repaintSky(); this.repaintGround(); this.updatePreviews();
+                    if (m.seed!=null) this.procSeed=m.seed;
+                    if (m.density!=null) this.procDensity=m.density;
+                    if (m.cloudSeed!=null) this.cloudSeed=m.cloudSeed;
+                    if (m.groundSeed!=null) this.groundSeed=m.groundSeed;
+                    this.repaintSky();
+                    this.repaintGround();
                 }
                 if (d.decorations) {
                     d.decorations.forEach((dec: any) => {

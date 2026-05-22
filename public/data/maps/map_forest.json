@@ -1,3 +1,60 @@
 {
-  "layerOverrides": {}
+  "version": "4.1",
+  "gridW": 8,
+  "gridD": 6,
+  "gridElevation": 0,
+  "biome": "forest",
+  "decorations": [],
+  "proceduralMeta": {
+    "seed": 42,
+    "density": 0.7,
+    "cloudSeed": 0,
+    "groundSeed": 1
+  },
+  "sceneLayers": {
+    "id": "forest_dynamic_stage",
+    "biome": "forest",
+    "layers": [
+      {
+        "id": "custom_layer_1779171353516",
+        "name": "Layer 1",
+        "enabled": true,
+        "order": 0,
+        "file": "chatgpt_image_17_mai_2026_01_42_03_alpha.png",
+        "opacity": 0.46,
+        "blendMode": "additive",
+        "emissive": [
+          0.35,
+          0.88,
+          0.42
+        ],
+        "xOffset": 0,
+        "yOffset": -16.5,
+        "zOffset": 46,
+        "widthScale": 4.7,
+        "height": 37,
+        "billboard": false,
+        "renderGroup": 0,
+        "alphaKey": "texture",
+        "scrollSpeedX": 0.001,
+        "scrollSpeedY": 0,
+        "cameraOpacity": {
+          "front": 0.5,
+          "overview": 0.28
+        },
+        "parallaxStrength": 0.04,
+        "stageFit": "lower-stage"
+      }
+    ],
+    "particleColor": [
+      0.4,
+      1,
+      0.2
+    ],
+    "particleCount": 22,
+    "particleAlpha": [
+      0.08,
+      0.26
+    ]
+  }
 }

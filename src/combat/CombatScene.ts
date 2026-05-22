@@ -14,7 +14,7 @@ import { CombatGrid, GridConfig }                          from './CombatGrid';
 import { CombatManager }                                   from './CombatManager';
 import { CombatArtPreset, FloorConfig, SkyColors, SunConfig, getCombatArtPreset } from './CombatArtPresets';
 import { SceneLayerManager, SCENE_LAYER_PRESETS } from '../rendering/SceneLayerManager';
-import type { SceneLayerInput } from '../rendering/SceneLayerTypes';
+import type { SceneGroundLayerConfig, SceneLayerInput } from '../rendering/SceneLayerTypes';
 import { TacticalCamera }                                  from '../camera/TacticalCamera';
 import { ClanManager }                                     from '../data/ClanManager';
 import { GameManager }                                     from '../data/GameManager';
@@ -39,6 +39,7 @@ interface ExportedCombatMapData {
   proceduralMeta?: {
     groundSeed?: number;
   };
+  groundLayer?: Partial<SceneGroundLayerConfig>;
   sceneLayers?: SceneLayerInput;
   layerOverrides?: Record<string, any>;
 }
@@ -463,7 +464,12 @@ export class CombatScene {
           baseSurfaceY = mapData.floorY;
       }
       const layerPreset = SCENE_LAYER_PRESETS[biome] ?? SCENE_LAYER_PRESETS['forest'];
-      const sceneLayerInput = (mapData?.sceneLayers ?? mapData?.layerOverrides?.[biome]) as SceneLayerInput | undefined;
+      const hasSceneLayersConfig = !!mapData && Object.prototype.hasOwnProperty.call(mapData, 'sceneLayers');
+      const sceneLayerInput = (
+          hasSceneLayersConfig
+              ? mapData?.sceneLayers
+              : mapData?.layerOverrides?.[biome]
+      ) as SceneLayerInput | undefined;
       const firstLayerFile = (stack: any): string | null => {
           if (Array.isArray(stack?.layers)) {
               return stack.layers.find((layer: any) => layer?.enabled !== false && layer?.file)?.file ?? null;
@@ -482,25 +488,52 @@ export class CombatScene {
           layerPreset.midground?.file ??
           layerPreset.backAtmosphere?.file ??
           layerPreset.background?.file;
-      const hasAuthoredLayerSet = biome === 'forest' || !!authoredLayerFile;
-      const usesLayerBackdrop = hasAuthoredLayerSet && !!(authoredLayerFile ?? presetLayerFile);
+      const shouldUsePresetLayers = !customMapLoaded && biome === 'forest';
+      const usesLayerBackdrop = !!authoredLayerFile || (shouldUsePresetLayers && !!presetLayerFile);
       
       // 1. LE SOL INFINI (Terrain Plane texturé HD-2D)
       // Remplace notre "Diorama Box / Table épaisse" d'avant par une plaine plate sur laquelle on répète l'image d'herbe.
-      const baseW = mapW * 8; 
-      const baseD = mapD * 8; 
+      const groundLayer = mapData?.groundLayer;
+      const baseW = mapW * (groundLayer?.widthScale ?? 8);
+      const baseD = mapD * (groundLayer?.depthScale ?? 8);
       const terrainPlane = MeshBuilder.CreateGround("terrainBase", { width: baseW, height: baseD }, this._scene);
-      terrainPlane.position.y = baseSurfaceY; 
-      terrainPlane.position.z = mapD / 2; // Centré un peu en arrière
+      terrainPlane.position.x = groundLayer?.xOffset ?? 0;
+      terrainPlane.position.y = baseSurfaceY + (groundLayer?.elevationOffset ?? 0); 
+      terrainPlane.position.z = mapD / 2 + (groundLayer?.zOffset ?? 0); // Centré un peu en arrière
       terrainPlane.isPickable = false;
+      const shouldEnableTerrainPlane = groundLayer
+          ? groundLayer.enabled !== false
+          : (!customMapLoaded && !usesLayerBackdrop);
+      terrainPlane.setEnabled(shouldEnableTerrainPlane);
       
       const terMat = new StandardMaterial("terrainMat", this._scene);
       
       // Récupération de la couleur naturelle mais avec une ombre globale atténuée 
-      if (usesLayerBackdrop) {
+      if (groundLayer?.mode === 'texture' && groundLayer.textureFile) {
+          const groundTex = new Texture(`/assets/backgrounds/${groundLayer.textureFile}`, this._scene, false, true, Texture.TRILINEAR_SAMPLINGMODE);
+          groundTex.wrapU = Texture.WRAP_ADDRESSMODE;
+          groundTex.wrapV = Texture.WRAP_ADDRESSMODE;
+          groundTex.uScale = groundLayer.repeatX ?? 8;
+          groundTex.vScale = groundLayer.repeatY ?? 8;
+          groundTex.hasAlpha = true;
+          terMat.diffuseTexture = groundTex;
+          terMat.useAlphaFromDiffuseTexture = true;
+          terMat.diffuseColor = Color3.White();
+          terMat.emissiveColor = new Color3(0.08, 0.10, 0.07);
+          terMat.alpha = groundLayer.opacity ?? 1;
+          terMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+          terMat.disableDepthWrite = terMat.alpha < 1;
+      } else if (groundLayer?.mode === 'color') {
+          const groundColor = Color3.FromHexString(groundLayer.color ?? '#163018');
+          terMat.diffuseColor = groundColor;
+          terMat.emissiveColor = groundColor.scale(0.18);
+          terMat.alpha = groundLayer.opacity ?? 1;
+          terMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+          terMat.disableDepthWrite = terMat.alpha < 1;
+      } else if (usesLayerBackdrop) {
           terMat.diffuseColor = new Color3(0.005, 0.014, 0.006);
           terMat.emissiveColor = new Color3(0.002, 0.010, 0.004);
-          terMat.alpha = 0.16;
+          terMat.alpha = groundLayer?.opacity ?? 0.16;
           terMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
           terMat.disableDepthWrite = true;
       } else {
@@ -510,12 +543,16 @@ export class CombatScene {
               mapData?.proceduralMeta?.groundSeed ?? 1,
               preset.floor
           );
-          groundTex.uScale = 8; 
-          groundTex.vScale = 8;
+          groundTex.uScale = groundLayer?.repeatX ?? 8; 
+          groundTex.vScale = groundLayer?.repeatY ?? 8;
           terMat.diffuseTexture = groundTex;
           terMat.emissiveColor = preset.terrainEmissive;
+          terMat.alpha = groundLayer?.opacity ?? 1;
       }
       terMat.specularColor = new Color3(0.0, 0.0, 0.0);
+      if (terMat.alpha < 1) {
+          terMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+      }
       terrainPlane.material = terMat;
       terrainPlane.parent = sceneryRoot;
 
@@ -535,7 +572,15 @@ export class CombatScene {
       );
 
       // Surcharges optionnelles exportées depuis le MapEditor.
-      this._layerManager.buildLayers(biome, sceneLayerInput);
+      const layerInputForBuild = sceneLayerInput ?? (customMapLoaded ? {
+          id: `${biome}_empty_layers`,
+          biome,
+          layers: [],
+          particleColor: [0.4, 1, 0.2],
+          particleCount: 0,
+          particleAlpha: [0.06, 0.2],
+      } as SceneLayerInput : undefined);
+      this._layerManager.buildLayers(biome, layerInputForBuild);
       const activeLayerPreset = this._layerManager.getActivePreset();
 
       // The PNG layer stack owns the cinematic shafts and foreground frame now.

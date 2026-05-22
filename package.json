@@ -8,6 +8,8 @@
     "build": "webpack --mode production",
     "watch": "webpack --mode development --watch",
     "scan": "node generate-manifest.js",
+    "backgrounds:alpha": "\"C:\\Users\\miche\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe\" scripts/clean-background-layers.py",
+    "backgrounds:alpha:scan": "npm run backgrounds:alpha && npm run scan",
     "props:v3:validate": "node scripts/validate-props-v3.js",
     "props:v3:validate:strict": "node scripts/validate-props-v3.js --strict",
     "characters:v1:validate": "node scripts/validate-characters-v1.js",
