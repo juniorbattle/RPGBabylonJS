@@ -764,7 +764,6 @@ export class MapEditor {
         pX: number, pY: number, pZ: number,
         flipX: boolean,
         scale: number = 1.0,
-        isProcedural: boolean = false,
         layer: PropLayer = this.selectedLayer,
         animClip: string = "idle"
     ): void {
@@ -774,7 +773,6 @@ export class MapEditor {
             animClip
         );
         sprite.pivot.parent = this.propsRoot;
-        (sprite.pivot as any).isProcedural = isProcedural;
         (sprite.pivot as any).isAnimated = true;
         (sprite.pivot as any).editorMetaData = {
             assetName: def.file, isFlippedX: flipX,
@@ -791,7 +789,6 @@ export class MapEditor {
         assetFile: string, pX: number, pY: number, pZ: number,
         flipX: boolean,
         scale: number = 1.0,
-        isProcedural: boolean = false,
         layer: PropLayer = this.selectedLayer
     ): void {
         const propDef = this.allProps.find(p => p.file === assetFile);
@@ -802,7 +799,6 @@ export class MapEditor {
         const pivot = new TransformNode(`ep_${Date.now()}_${Math.random()}`, this.scene);
         pivot.position = new Vector3(pX, pY, pZ);
         pivot.parent   = this.propsRoot;
-        (pivot as any).isProcedural = isProcedural;
 
         const mat = new StandardMaterial(`pm_${Date.now()}`, this.scene);
         mat.backFaceCulling = false;
@@ -1271,14 +1267,14 @@ export class MapEditor {
                 if (this.selectedIsAnimated) {
                     const def = this.allAnimatedProps.find(p => p.file === this.selectedAsset);
                     if (!def) return;
-                    this.spawnAnimatedProp(def, pt.x, py, pt.z, false, this.customScale, false, this.selectedLayer);
+                    this.spawnAnimatedProp(def, pt.x, py, pt.z, false, this.customScale, this.selectedLayer);
                     if (this.symmetryEnabled) {
-                        this.spawnAnimatedProp(def, this.getMirrorX(pt.x), py, pt.z, false, this.customScale, false, this.selectedLayer);
+                        this.spawnAnimatedProp(def, this.getMirrorX(pt.x), py, pt.z, false, this.customScale, this.selectedLayer);
                     }
                 } else {
-                    this.spawnProp(this.selectedAsset, pt.x, py, pt.z, false, this.customScale, false, this.selectedLayer);
+                    this.spawnProp(this.selectedAsset, pt.x, py, pt.z, false, this.customScale, this.selectedLayer);
                     if (this.symmetryEnabled) {
-                        this.spawnProp(this.selectedAsset, this.getMirrorX(pt.x), py, pt.z, false, this.customScale, false, this.selectedLayer);
+                        this.spawnProp(this.selectedAsset, this.getMirrorX(pt.x), py, pt.z, false, this.customScale, this.selectedLayer);
                     }
                 }
             }
@@ -1407,10 +1403,10 @@ export class MapEditor {
                         if (dec.animated) {
                             const def = this.allAnimatedProps.find(p => p.file === dec.file);
                             if (def) {
-                                this.spawnAnimatedProp(def, dec.x, py, dec.z, dec.scaleX === -1, dec.scaleMult ?? 1, false, layer, dec.animClip ?? "idle");
+                                this.spawnAnimatedProp(def, dec.x, py, dec.z, dec.scaleX === -1, dec.scaleMult ?? 1, layer, dec.animClip ?? "idle");
                             }
                         } else {
-                            this.spawnProp(dec.file, dec.x, py, dec.z, dec.scaleX === -1, dec.scaleMult ?? 1, false, layer);
+                            this.spawnProp(dec.file, dec.x, py, dec.z, dec.scaleX === -1, dec.scaleMult ?? 1, layer);
                         }
                     });
                 }

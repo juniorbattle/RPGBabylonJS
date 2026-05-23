@@ -23,21 +23,24 @@ Les assets de decor doivent etre penses comme une composition complete 16:9, ide
 
 ## Contrat Layers
 
-Ordre logique de l'arriere vers l'avant :
-1. `background` : ambiance generale, profondeur, lumiere centrale.
-2. `midground` : vegetation/rochers derriere le plateau, volume de scene.
-3. `platform_blend_fog` : brume basse qui masque le raccord plateau/decor.
+Ordre logique de l'arriere vers l'avant (alias legacy entre parentheses) :
+1. `backAtmosphere` (`background`) : ambiance generale, profondeur, lumiere centrale.
+2. `mainMidground` (`midground`) : vegetation/rochers derriere le plateau, volume de scene.
+3. `groundBlend` (`platform_blend_fog`) : brume basse qui masque le raccord plateau/decor.
 4. grid 3D.
 5. unites.
-6. `foreground_frame` : troncs, racines, feuillages lateraux.
-7. `fx_overlay` : brume, lucioles, rayons doux.
-8. UI.
+6. `foregroundCorners` (`foreground_frame`) : troncs, racines, feuillages lateraux.
+7. `upperCanopy` : branches, lianes, feuillage haut.
+8. `fxOverlay` : brume, lucioles, rayons doux.
+9. UI.
 
 Les layers BabylonJS doivent rester non pickables pour ne jamais bloquer les clics de deploiement, de selection, d'AOE ou de grille.
 
+Le sol horizontal n'est plus un layer, c'est un objet distinct `SceneGroundLayerConfig` (cle `groundLayer` dans le JSON de map) avec 3 modes : `procedural` (DynamicTexture par biome), `texture` (PNG repeat-tile avec wrap addressing), ou `color` (uni).
+
 ## Regles Techniques
 
-Utiliser `SceneLayerManager` pour la scene de combat et la preview MapEditor.
+Utiliser `SceneLayerManager` pour la scene de combat et la preview MapEditor. Le module `BiomeLayerSystem.ts` n'existe plus.
 
 Pour chaque layer :
 - `MeshBuilder.CreatePlane` ;
@@ -49,6 +52,8 @@ Pour chaque layer :
 - blend additive uniquement pour les FX/fog si necessaire.
 
 Ne pas melanger UI et decor. Ne pas appliquer les lumieres 3D aux images peintes.
+
+Aucun helper procedural local (`buildStageLightShafts`, `buildDepthLayers`, `createForegroundFoliageTexture`, etc.) ne doit etre reintroduit dans `CombatScene.ts` : ces responsabilites appartiennent au `SceneLayerManager`.
 
 ## Camera
 
@@ -78,9 +83,14 @@ L'onglet Layers doit prioriser :
 - alpha ;
 - blend mode ;
 - parallax ;
-- elevation de la grid combat.
+- elevation de la grid combat ;
+- presets rapides (`Back`, `Mid`, `Ground`, `Frame`, `Canopy`, `FX`) qui patchent un layer existant.
 
-Les props individuels deviennent secondaires. Ils restent possibles, mais la direction principale vient des layers composes.
+Les props individuels deviennent secondaires. Ils restent possibles via le pinceau manuel, mais la direction principale vient des layers composes.
+
+Le panneau "Sol horizontal" edite `SceneGroundLayerConfig` (mode procedural / texture / couleur, repeat, offsets, echelle).
+
+Le composer procedural extrait (`ProceduralComposer.ts` / `MapEditor.patch.ts`) a ete supprime. Le code procedural inline dans `MapEditor.ts` (COMPOSITE_LIBRARY, runProceduralGroundProps, etc.) a egalement ete retire.
 
 ## Validation
 
