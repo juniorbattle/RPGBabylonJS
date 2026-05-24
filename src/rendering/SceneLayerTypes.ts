@@ -2,7 +2,7 @@ import { Vector3 } from '@babylonjs/core';
 
 export type SceneLayerBlendMode = 'alpha' | 'additive' | 'screen' | 'multiply';
 export type SceneLayerAlphaKey = 'none' | 'texture' | 'white' | 'black' | 'luminance' | 'magenta';
-export type SceneLayerCameraMode = 'front' | 'overview';
+export type SceneLayerCameraMode = 'front' | 'overview' | 'focus';
 export type SceneLayerStageFit = 'full-stage' | 'lower-stage' | 'foreground-frame' | 'fx-overlay' | 'sky-void';
 
 export type SceneLayerCompositionRole =
@@ -13,6 +13,27 @@ export type SceneLayerCompositionRole =
     | 'foregroundCorners'
     | 'upperCanopy'
     | 'fxOverlay';
+
+/**
+ * Narrative intent driving how the backdrop composes during a cinematic.
+ * Used by SceneLayerManager.setCinematicIntent() to scale layer alphas
+ * (and optionally hide roles) for clearer foreground readability.
+ *
+ * - `idle`     : no cinematic running, all layers at their base alpha.
+ * - `attack`   : foreground frame fades to expose attacker / target.
+ * - `skill`    : foreground further reduced, fxOverlay boosted.
+ * - `aoe`      : aggressive foreground fade for wide camera frames.
+ * - `death`    : groundBlend & fxOverlay boosted for dramatic mood.
+ * - `dialogue`: fxOverlay hidden to keep faces legible.
+ */
+export type CinematicIntent = 'idle' | 'attack' | 'skill' | 'aoe' | 'death' | 'dialogue';
+
+export interface CinematicIntentSettings {
+    /** Multiplier applied to the layer's base alpha, keyed by composition role. */
+    alphaScale?: Partial<Record<SceneLayerCompositionRole, number>>;
+    /** Roles forcibly hidden (alpha=0) for the duration of the intent. */
+    hideRoles?: SceneLayerCompositionRole[];
+}
 
 export type SceneLayerLegacyRole =
     | 'background'

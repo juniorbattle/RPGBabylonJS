@@ -11,6 +11,8 @@ import {
     Vector3,
 } from '@babylonjs/core';
 import {
+    CinematicIntent,
+    CinematicIntentSettings,
     SceneLayerAsset,
     SceneLayerCameraMode,
     SceneLayerCompositionRole,
@@ -60,6 +62,21 @@ const mergeLayer = (base: SceneLayerAsset, override: Partial<SceneLayerAsset>): 
     cameraZOffset: { ...(base.cameraZOffset ?? {}), ...(override.cameraZOffset ?? {}) },
 });
 
+/**
+ * Default per-intent alpha scaling. Tuned so foreground elements step
+ * out of the way during dramatic beats while atmosphere/midground stay
+ * present. Override per-game by editing this table or by writing a
+ * setCinematicIntent() wrapper that mutates the layer's cameraOpacity.
+ */
+const INTENT_PRESETS: Record<CinematicIntent, CinematicIntentSettings> = {
+    idle:     {},
+    attack:   { alphaScale: { foregroundCorners: 0.35, upperCanopy: 0.45, fxOverlay: 0.5,  groundBlend: 0.72 } },
+    skill:    { alphaScale: { foregroundCorners: 0.20, upperCanopy: 0.30, fxOverlay: 1.20, groundBlend: 0.85 } },
+    aoe:      { alphaScale: { foregroundCorners: 0.15, upperCanopy: 0.25, fxOverlay: 0.80, groundBlend: 0.60 } },
+    death:    { alphaScale: { foregroundCorners: 0.50, upperCanopy: 0.55, fxOverlay: 1.30, groundBlend: 1.40 } },
+    dialogue: { hideRoles: ['fxOverlay'], alphaScale: { foregroundCorners: 0.55, upperCanopy: 0.60 } },
+};
+
 export class SceneLayerManager {
     private layers: ManagedLayer[] = [];
     private preset: SceneLayerPreset = SCENE_LAYER_PRESETS.forest;
@@ -67,6 +84,7 @@ export class SceneLayerManager {
     private parallaxEnabled = true;
     private parallaxAnchorX = 0;
     private parallaxObserver: Observer<Scene> | null = null;
+    private currentIntent: CinematicIntent = 'idle';
 
     constructor(
         private scene: Scene,
@@ -371,19 +389,41 @@ export class SceneLayerManager {
             layer.mesh.position.y += modeY;
             layer.mesh.position.z += modeZ;
         }
+        // Preserve the active cinematic intent across camera-mode changes.
+        if (this.currentIntent !== 'idle') {
+            this.setCinematicIntent(this.currentIntent);
+        }
     }
 
-    setCinematicMode(enabled: boolean): void {
+    /**
+     * Applies a typed cinematic intent to the layer stack. Scales each
+     * layer's alpha (and optionally hides roles) according to INTENT_PRESETS.
+     * Pass `'idle'` to reset to the base camera-mode alpha.
+     */
+    setCinematicIntent(intent: CinematicIntent): void {
+        this.currentIntent = intent;
+        const settings = INTENT_PRESETS[intent] ?? {};
         for (const layer of this.layers) {
-            const baseAlpha = layer.cfg.cameraOpacity?.[this.mode] ?? layer.cfg.opacity;
             const role = layer.cfg.compositionRole;
-            const factor = role === 'foregroundCorners' ? 0.35
-                : role === 'upperCanopy' ? 0.45
-                : role === 'fxOverlay' ? 0.5
-                : role === 'groundBlend' ? 0.72
-                : 1;
-            layer.mat.alpha = enabled ? baseAlpha * factor : baseAlpha;
+            const baseAlpha = layer.cfg.cameraOpacity?.[this.mode] ?? layer.cfg.opacity;
+            const hidden = !!(role && settings.hideRoles?.includes(role));
+            const scale = (role && settings.alphaScale?.[role]) ?? 1;
+            const alpha = hidden ? 0 : Math.max(0, Math.min(baseAlpha * scale, 1));
+            layer.mat.alpha = alpha;
+            layer.mesh.setEnabled(alpha > 0.001);
         }
+    }
+
+    getCinematicIntent(): CinematicIntent {
+        return this.currentIntent;
+    }
+
+    /**
+     * @deprecated Use setCinematicIntent('attack' | 'idle') instead.
+     * Kept as a thin wrapper for backward compatibility with combat code.
+     */
+    setCinematicMode(enabled: boolean): void {
+        this.setCinematicIntent(enabled ? 'attack' : 'idle');
     }
 
     getActivePreset(): SceneLayerPreset {
