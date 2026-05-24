@@ -70,10 +70,34 @@ const aliasByRole = (preset: SceneLayerPreset): SceneLayerPreset => {
     };
 };
 
+/**
+ * Default solid-color sky void fill for any biome. Acts as the guaranteed
+ * opaque backstop behind every other layer. SceneLayerManager will normalize
+ * critical props (opacity=1, order=-100, depthWrite=true) automatically.
+ */
+const skyVoidLayer = (
+    id: string,
+    color: [number, number, number],
+): SceneLayerAsset => layer(id, 'Sky void fill', -100, null, {
+    opacity: 1,
+    blendMode: 'alpha',
+    emissive: color,
+    yOffset: -10,
+    zOffset: 50,
+    widthScale: 10,
+    height: 70,
+    renderGroup: 0,
+    alphaKey: 'none',
+    cameraOpacity: { front: 1, overview: 1 },
+    parallaxStrength: 0,
+    stageFit: 'sky-void',
+}, 'skyVoidFill');
+
 export const magicalForestLayerPreset: SceneLayerPreset = aliasByRole({
     id: 'forest_dynamic_stage',
     biome: 'forest',
     layers: [
+        skyVoidLayer('sky_void_fill', [0.05, 0.10, 0.07]),
         layer('back_atmosphere', 'Back atmosphere', 0, 'fx_forest_mist_alpha.png', {
             opacity: 0.26,
             blendMode: 'additive',
@@ -163,6 +187,7 @@ const simpleBiomePreset = (
     id,
     biome: id,
     layers: [
+        skyVoidLayer(`${id}_sky_void_fill`, [tint[0] * 0.18, tint[1] * 0.18, tint[2] * 0.18]),
         layer(`${id}_back_atmosphere`, 'Back atmosphere', 0, files.backAtmosphere, {
             opacity: 0.25,
             blendMode: 'additive',

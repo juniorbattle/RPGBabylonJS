@@ -70,21 +70,77 @@ export class SceneLayerManager {
         private root: TransformNode,
         private mapW: number,
         private mapD: number,
-        private baseSurfaceY: number = 0
+        private baseSurfaceY: number = 0,
+        private skyVoidColor: [number, number, number] = [0.06, 0.12, 0.08]
     ) {}
+
+    setSkyVoidColor(color: [number, number, number]): void {
+        this.skyVoidColor = color;
+    }
 
     buildLayers(biome: string, input?: SceneLayerInput, mode: SceneLayerCameraMode = this.mode): void {
         this.clearLayers();
         const base = SCENE_LAYER_PRESETS[biome] ?? SCENE_LAYER_PRESETS.forest;
         this.preset = this.resolvePreset(base, input, biome);
+        this.ensureSkyVoidFill();
         this.mode = mode;
 
         const sorted = [...this.preset.layers]
-            .filter((layer) => layer.enabled !== false && !!layer.file)
+            .filter((layer) => layer.enabled !== false && (layer.compositionRole === 'skyVoidFill' || !!layer.file))
             .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
         sorted.forEach((layer, index) => this.buildLayer(layer, index));
         this.applyCameraMode(mode);
+    }
+
+    /**
+     * Guarantees the existence of a `skyVoidFill` layer in the active preset.
+     * - If the preset already defines one, normalize its critical properties
+     *   so it always renders opaque and behind every other layer.
+     * - Otherwise, inject a synthetic solid-color sky void using `skyVoidColor`.
+     * This prevents the scene `clearColor` from bleeding through transparent
+     * holes in mid/back atmosphere layers (the classic "black band" problem).
+     */
+    private ensureSkyVoidFill(): void {
+        const existing = this.preset.layers.find((l) => l.compositionRole === 'skyVoidFill');
+        if (existing) {
+            existing.enabled = existing.enabled !== false;
+            existing.order = Math.min(existing.order ?? -100, -100);
+            existing.opacity = 1;
+            existing.renderGroup = 0;
+            existing.blendMode = 'alpha';
+            existing.alphaKey = existing.file ? (existing.alphaKey ?? 'none') : 'none';
+            existing.cameraOpacity = { front: 1, overview: 1, ...(existing.cameraOpacity ?? {}) };
+            existing.cameraOpacity.front = 1;
+            existing.cameraOpacity.overview = 1;
+            return;
+        }
+        this.preset.layers.unshift(this.makeSyntheticSkyVoidFill());
+    }
+
+    private makeSyntheticSkyVoidFill(): SceneLayerAsset {
+        return {
+            id: 'sky_void_fill_auto',
+            name: 'Sky Void Fill (auto)',
+            enabled: true,
+            order: -100,
+            file: null,
+            opacity: 1,
+            blendMode: 'alpha',
+            emissive: [...this.skyVoidColor] as [number, number, number],
+            xOffset: 0,
+            yOffset: -10,
+            zOffset: 50,
+            widthScale: 10,
+            height: 70,
+            billboard: false,
+            renderGroup: 0,
+            alphaKey: 'none',
+            cameraOpacity: { front: 1, overview: 1 },
+            parallaxStrength: 0,
+            stageFit: 'sky-void',
+            compositionRole: 'skyVoidFill',
+        };
     }
 
     applyCameraMode(mode: SceneLayerCameraMode): void {
@@ -123,7 +179,8 @@ export class SceneLayerManager {
     }
 
     private buildLayer(cfg: SceneLayerAsset, index: number): void {
-        if (!cfg.file) return;
+        const isSkyVoid = cfg.compositionRole === 'skyVoidFill';
+        if (!cfg.file && !isSkyVoid) return;
 
         const planeW = this.mapW * cfg.widthScale;
         const planeH = cfg.height;
@@ -145,11 +202,13 @@ export class SceneLayerManager {
         mat.diffuseColor = new Color3(1, 1, 1);
         mat.emissiveColor = new Color3(...cfg.emissive);
         mat.alpha = cfg.opacity;
-        mat.disableDepthWrite = true;
+        // The sky void fill is the only layer that writes depth: it acts as the
+        // opaque "backstop" so transparent layers in front composite correctly.
+        mat.disableDepthWrite = !isSkyVoid;
         mat.alphaCutOff = 0.03;
 
         const alphaKey = cfg.alphaKey ?? 'texture';
-        const usesTextureAlpha = alphaKey !== 'none';
+        const usesTextureAlpha = alphaKey !== 'none' && !!cfg.file;
         mat.transparencyMode = usesTextureAlpha
             ? StandardMaterial.MATERIAL_ALPHATESTANDBLEND
             : StandardMaterial.MATERIAL_ALPHABLEND;
@@ -157,36 +216,46 @@ export class SceneLayerManager {
             mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
             mat.alphaMode = Engine.ALPHA_ADD;
         }
+        if (isSkyVoid && !cfg.file) {
+            // Solid-color sky void: fully opaque, no texture, no blending.
+            mat.transparencyMode = StandardMaterial.MATERIAL_OPAQUE;
+            mat.alpha = 1;
+            mat.alphaMode = Engine.ALPHA_DISABLE;
+        }
 
-        const tex = new Texture(
-            `/assets/backgrounds/${cfg.file}`,
-            this.scene,
-            false,
-            true,
-            Texture.BILINEAR_SAMPLINGMODE,
-            undefined,
-            () => console.warn(`SceneLayerManager: texture not found - ${cfg.file}`)
-        );
-        tex.hasAlpha = usesTextureAlpha;
-        tex.getAlphaFromRGB = alphaKey === 'black' || alphaKey === 'luminance';
-        tex.wrapU = Texture.CLAMP_ADDRESSMODE;
-        tex.wrapV = Texture.CLAMP_ADDRESSMODE;
-        tex.uScale = cfg.uvScaleX ?? 1;
-        tex.vScale = cfg.uvScaleY ?? 1;
-        tex.uOffset = cfg.uvOffsetX ?? 0;
-        tex.vOffset = cfg.uvOffsetY ?? 0;
+        let tex: Texture | null = null;
+        if (cfg.file) {
+            tex = new Texture(
+                `/assets/backgrounds/${cfg.file}`,
+                this.scene,
+                false,
+                true,
+                Texture.BILINEAR_SAMPLINGMODE,
+                undefined,
+                () => console.warn(`SceneLayerManager: texture not found - ${cfg.file}`)
+            );
+            tex.hasAlpha = usesTextureAlpha;
+            tex.getAlphaFromRGB = alphaKey === 'black' || alphaKey === 'luminance';
+            tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+            tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+            tex.uScale = cfg.uvScaleX ?? 1;
+            tex.vScale = cfg.uvScaleY ?? 1;
+            tex.uOffset = cfg.uvOffsetX ?? 0;
+            tex.vOffset = cfg.uvOffsetY ?? 0;
 
-        mat.diffuseTexture = tex;
-        mat.useAlphaFromDiffuseTexture = usesTextureAlpha;
+            mat.diffuseTexture = tex;
+            mat.useAlphaFromDiffuseTexture = usesTextureAlpha;
+        }
         mesh.material = mat;
 
         let observer: Observer<Scene> | null = null;
-        if (cfg.scrollSpeedX || cfg.scrollSpeedY) {
+        if (tex && (cfg.scrollSpeedX || cfg.scrollSpeedY)) {
+            const localTex = tex;
             observer = this.scene.onBeforeRenderObservable.add(() => {
                 if (mesh.isDisposed()) return;
                 const dt = this.scene.getEngine().getDeltaTime() / 1000;
-                if (cfg.scrollSpeedX) tex.uOffset += cfg.scrollSpeedX * dt;
-                if (cfg.scrollSpeedY) tex.vOffset += cfg.scrollSpeedY * dt;
+                if (cfg.scrollSpeedX) localTex.uOffset += cfg.scrollSpeedX * dt;
+                if (cfg.scrollSpeedY) localTex.vOffset += cfg.scrollSpeedY * dt;
             });
         }
 

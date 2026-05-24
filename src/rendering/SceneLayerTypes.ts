@@ -3,9 +3,10 @@ import { Vector3 } from '@babylonjs/core';
 export type SceneLayerBlendMode = 'alpha' | 'additive' | 'screen' | 'multiply';
 export type SceneLayerAlphaKey = 'none' | 'texture' | 'white' | 'black' | 'luminance' | 'magenta';
 export type SceneLayerCameraMode = 'front' | 'overview';
-export type SceneLayerStageFit = 'full-stage' | 'lower-stage' | 'foreground-frame' | 'fx-overlay';
+export type SceneLayerStageFit = 'full-stage' | 'lower-stage' | 'foreground-frame' | 'fx-overlay' | 'sky-void';
 
 export type SceneLayerCompositionRole =
+    | 'skyVoidFill'
     | 'backAtmosphere'
     | 'mainMidground'
     | 'groundBlend'
