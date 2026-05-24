@@ -64,6 +64,9 @@ export class SceneLayerManager {
     private layers: ManagedLayer[] = [];
     private preset: SceneLayerPreset = SCENE_LAYER_PRESETS.forest;
     private mode: SceneLayerCameraMode = 'front';
+    private parallaxEnabled = true;
+    private parallaxAnchorX = 0;
+    private parallaxObserver: Observer<Scene> | null = null;
 
     constructor(
         private scene: Scene,
@@ -76,6 +79,34 @@ export class SceneLayerManager {
 
     setSkyVoidColor(color: [number, number, number]): void {
         this.skyVoidColor = color;
+    }
+
+    /**
+     * Toggles the per-frame parallax displacement on layer X axis.
+     * When disabled, layer X is reset to its base position so the scene
+     * looks static again (useful for cinematics that animate the camera
+     * but should not drag the backdrop).
+     */
+    setParallaxEnabled(enabled: boolean): void {
+        this.parallaxEnabled = enabled;
+        if (!enabled) {
+            for (const layer of this.layers) {
+                layer.mesh.position.x = layer.basePosition.x;
+            }
+        }
+    }
+
+    /**
+     * Resets the parallax anchor to the current camera X so subsequent
+     * camera motion is measured from "here". Call this after a teleport
+     * (mode switch, focus on a new unit) to avoid abrupt layer jumps.
+     */
+    resyncParallaxAnchor(): void {
+        const cam = this.scene.activeCamera;
+        this.parallaxAnchorX = cam ? cam.position.x : 0;
+        for (const layer of this.layers) {
+            layer.mesh.position.x = layer.basePosition.x;
+        }
     }
 
     buildLayers(biome: string, input?: SceneLayerInput, mode: SceneLayerCameraMode = this.mode): void {
@@ -92,6 +123,35 @@ export class SceneLayerManager {
 
         sorted.forEach((layer, index) => this.buildLayer(layer, index));
         this.applyCameraMode(mode);
+        this.startParallax();
+    }
+
+    private startParallax(): void {
+        this.stopParallax();
+        if (!this.parallaxEnabled) return;
+        const cam = this.scene.activeCamera;
+        this.parallaxAnchorX = cam ? cam.position.x : 0;
+
+        this.parallaxObserver = this.scene.onBeforeRenderObservable.add(() => {
+            const activeCam = this.scene.activeCamera;
+            if (!activeCam) return;
+            const dx = activeCam.position.x - this.parallaxAnchorX;
+            for (const layer of this.layers) {
+                const strength = layer.cfg.parallaxStrength ?? 0;
+                // The layer follows the camera by (1 - strength); the residual
+                // `strength * dx` is the visible screen-space displacement.
+                // strength=0 → layer is glued to the camera (no parallax)
+                // strength=1 → layer is fixed in world (full parallax)
+                layer.mesh.position.x = layer.basePosition.x + dx * (1 - strength);
+            }
+        });
+    }
+
+    private stopParallax(): void {
+        if (this.parallaxObserver) {
+            this.scene.onBeforeRenderObservable.remove(this.parallaxObserver);
+            this.parallaxObserver = null;
+        }
     }
 
     /**
@@ -375,6 +435,7 @@ export class SceneLayerManager {
     }
 
     private clearLayers(): void {
+        this.stopParallax();
         for (const layer of this.layers) {
             if (layer.observer) this.scene.onBeforeRenderObservable.remove(layer.observer);
             layer.tex?.dispose();
