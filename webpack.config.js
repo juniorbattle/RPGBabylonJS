@@ -51,9 +51,14 @@ module.exports = (env, argv) => {
     ],
 
     devServer: {
-      static: {
-        directory: path.resolve(__dirname, 'dist'),
-      },
+      // Serve both the webpack output (dist/) AND the live source assets (public/).
+      // This way, edits to JSON / images in public/ are picked up immediately by the
+      // browser without having to restart `npm run dev` (otherwise copy-webpack-plugin
+      // only copies once at boot and stale files remain in dist/).
+      static: [
+        { directory: path.resolve(__dirname, 'public') },
+        { directory: path.resolve(__dirname, 'dist') },
+      ],
       port:   8080,
       hot:    true,
       open:   false,
