@@ -83,6 +83,7 @@ export class SceneLayerManager {
         const base = SCENE_LAYER_PRESETS[biome] ?? SCENE_LAYER_PRESETS.forest;
         this.preset = this.resolvePreset(base, input, biome);
         this.ensureSkyVoidFill();
+        this.validateLayerStack();
         this.mode = mode;
 
         const sorted = [...this.preset.layers]
@@ -91,6 +92,110 @@ export class SceneLayerManager {
 
         sorted.forEach((layer, index) => this.buildLayer(layer, index));
         this.applyCameraMode(mode);
+    }
+
+    /**
+     * Runs sanity checks on the active layer stack and prints actionable
+     * console warnings. Helps catch misconfigured maps (missing roles,
+     * duplicates, wrong renderGroup, broken z-order, etc.) without crashing.
+     */
+    private validateLayerStack(): void {
+        type Issue = { level: 'error' | 'warn'; msg: string };
+        const issues: Issue[] = [];
+        const layers = this.preset.layers.filter((l) => l.enabled !== false);
+
+        const BG_ROLES: SceneLayerCompositionRole[] = ['skyVoidFill', 'backAtmosphere', 'mainMidground', 'groundBlend'];
+        const FG_ROLES: SceneLayerCompositionRole[] = ['foregroundCorners', 'upperCanopy', 'fxOverlay'];
+
+        const byRole = new Map<SceneLayerCompositionRole, SceneLayerAsset[]>();
+        const noRole: SceneLayerAsset[] = [];
+        for (const layer of layers) {
+            if (!layer.compositionRole) {
+                noRole.push(layer);
+                continue;
+            }
+            const arr = byRole.get(layer.compositionRole) ?? [];
+            arr.push(layer);
+            byRole.set(layer.compositionRole, arr);
+        }
+
+        // 1. Required roles
+        if (!byRole.has('skyVoidFill')) {
+            issues.push({ level: 'error', msg: "No 'skyVoidFill' layer present — ensureSkyVoidFill() should have injected one." });
+        }
+        if (!byRole.has('mainMidground')) {
+            issues.push({ level: 'warn', msg: "No 'mainMidground' layer — the scene's main backdrop will be missing." });
+        }
+
+        // 2. Duplicate roles
+        for (const [role, list] of byRole) {
+            if (list.length > 1) {
+                issues.push({
+                    level: 'warn',
+                    msg: `Multiple layers share role '${role}': ${list.map((l) => l.id).join(', ')}. Only one is expected.`,
+                });
+            }
+        }
+
+        // 3. Per-layer sanity checks
+        for (const layer of layers) {
+            const ctx = `[${layer.id} / ${layer.compositionRole ?? 'no-role'}]`;
+
+            if (!layer.file && layer.compositionRole !== 'skyVoidFill') {
+                issues.push({ level: 'warn', msg: `${ctx} has no file but is not 'skyVoidFill' — it will be skipped at build time.` });
+            }
+            if (layer.opacity === 0 && layer.enabled !== false) {
+                issues.push({ level: 'warn', msg: `${ctx} is enabled but opacity is 0 (mesh will be invisible, consider enabled:false).` });
+            }
+            if (layer.widthScale < 1) {
+                issues.push({ level: 'warn', msg: `${ctx} widthScale=${layer.widthScale} (<1) — plane is narrower than the map, expect side clipping.` });
+            }
+            if (layer.height < 1) {
+                issues.push({ level: 'warn', msg: `${ctx} height=${layer.height} (<1) — plane is invisibly thin.` });
+            }
+
+            const role = layer.compositionRole;
+            if (role && BG_ROLES.includes(role) && layer.renderGroup !== 0) {
+                issues.push({ level: 'warn', msg: `${ctx} renderGroup=${layer.renderGroup}, expected 0 for background role.` });
+            }
+            if (role && FG_ROLES.includes(role) && layer.renderGroup !== 1) {
+                issues.push({ level: 'warn', msg: `${ctx} renderGroup=${layer.renderGroup}, expected 1 for foreground role.` });
+            }
+        }
+
+        // 4. Z-order coherence
+        const skyVoid = byRole.get('skyVoidFill')?.[0];
+        const back = byRole.get('backAtmosphere')?.[0];
+        const mid = byRole.get('mainMidground')?.[0];
+        if (skyVoid && back && skyVoid.zOffset <= back.zOffset) {
+            issues.push({
+                level: 'warn',
+                msg: `skyVoidFill zOffset (${skyVoid.zOffset}) should be greater than backAtmosphere zOffset (${back.zOffset}) so it sits behind it.`,
+            });
+        }
+        if (back && mid && back.zOffset <= mid.zOffset) {
+            issues.push({
+                level: 'warn',
+                msg: `backAtmosphere zOffset (${back.zOffset}) should be greater than mainMidground zOffset (${mid.zOffset}).`,
+            });
+        }
+
+        // 5. No-role layers
+        for (const layer of noRole) {
+            issues.push({ level: 'warn', msg: `[${layer.id}] has no compositionRole — assign one for proper z-ordering and validation.` });
+        }
+
+        if (issues.length === 0) return;
+        const errors = issues.filter((i) => i.level === 'error').length;
+        const warns = issues.length - errors;
+        console.groupCollapsed(
+            `[SceneLayerManager] '${this.preset.id}' layer stack: ${errors} error(s), ${warns} warning(s)`
+        );
+        for (const issue of issues) {
+            if (issue.level === 'error') console.error('[X]', issue.msg);
+            else console.warn('[!]', issue.msg);
+        }
+        console.groupEnd();
     }
 
     /**
