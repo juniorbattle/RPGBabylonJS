@@ -572,6 +572,7 @@ export class MapEditorLayersTab {
             parallaxStrength: raw.parallaxStrength ?? 0,
             stageFit: raw.stageFit,
             compositionRole: raw.compositionRole,
+            autoFit: raw.autoFit,
         };
     }
 

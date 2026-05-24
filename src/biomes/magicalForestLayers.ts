@@ -133,6 +133,7 @@ export const magicalForestLayerPreset: SceneLayerPreset = aliasByRole({
             parallaxStrength: 0.04,
             stageFit: 'lower-stage',
             scrollSpeedX: 0.001,
+            autoFit: true,
         }, 'groundBlend'),
         layer('foreground_corners', 'Foreground corners', 30, 'fore_forest_v3_alpha.png', {
             opacity: 0.58,

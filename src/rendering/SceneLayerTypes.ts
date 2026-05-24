@@ -51,6 +51,13 @@ export interface SceneLayerAsset {
     parallaxStrength?: number;
     stageFit?: SceneLayerStageFit;
     compositionRole?: SceneLayerCompositionRole;
+    /**
+     * When true, geometric properties (yOffset/zOffset/widthScale/height)
+     * are recomputed by SceneLayerManager based on the active mainMidground
+     * and the ground baseline. Currently honored on `groundBlend` to
+     * guarantee a clean 2D-3D ground fusion regardless of map dimensions.
+     */
+    autoFit?: boolean;
 }
 
 export interface SceneLayerStack {

@@ -114,6 +114,7 @@ export class SceneLayerManager {
         const base = SCENE_LAYER_PRESETS[biome] ?? SCENE_LAYER_PRESETS.forest;
         this.preset = this.resolvePreset(base, input, biome);
         this.ensureSkyVoidFill();
+        this.applyAutoFit();
         this.validateLayerStack();
         this.mode = mode;
 
@@ -152,6 +153,56 @@ export class SceneLayerManager {
             this.scene.onBeforeRenderObservable.remove(this.parallaxObserver);
             this.parallaxObserver = null;
         }
+    }
+
+    /**
+     * Recomputes geometric properties of layers flagged with `autoFit: true`.
+     *
+     * Currently supports `groundBlend`: it is repositioned to straddle the
+     * 2D-3D ground fusion zone, anchored just in front of mainMidground and
+     * covering from a few units below the ground up to ~1/3 of mainMidground
+     * vertically. This guarantees a clean transition between the 3D ground
+     * plane and the painted backdrop, regardless of map dimensions or how
+     * the artist tweaked `mainMidground`.
+     */
+    private applyAutoFit(): void {
+        const midground = this.preset.layers.find(
+            (l) => l.compositionRole === 'mainMidground' && l.enabled !== false
+        );
+        const groundBlend = this.preset.layers.find(
+            (l) => l.compositionRole === 'groundBlend' && l.autoFit === true
+        );
+        if (!groundBlend) return;
+        if (!midground) {
+            console.warn(
+                `[SceneLayerManager] '${groundBlend.id}' has autoFit:true but no mainMidground layer is present; skipping auto-fit.`
+            );
+            return;
+        }
+
+        // World-Y of the 3D ground top (baseSurfaceY) and the top edge of
+        // the mainMidground plane. Recall computePosition() places the plane
+        // center at baseSurfaceY + yOffset + height/2, so the BOTTOM edge of
+        // a plane configured with `yOffset` is exactly `baseSurfaceY + yOffset`,
+        // and the TOP edge is that bottom plus `height`.
+        const groundY = this.baseSurfaceY;
+        const midTopY = this.baseSurfaceY + midground.yOffset + midground.height;
+
+        // Fusion zone: from 2u below the ground (over-cover to hide any gap)
+        // up to 1/3 of the way up the mainMidground above the ground line.
+        const fusionStartY = groundY - 2;
+        const reach = Math.max(4, (midTopY - groundY) * 0.33);
+        const fusionEndY = groundY + reach;
+        const fusionHeight = fusionEndY - fusionStartY;
+
+        // Convert the absolute bottom Y back into the relative `yOffset` used
+        // by computePosition (which adds baseSurfaceY internally).
+        groundBlend.yOffset = fusionStartY - this.baseSurfaceY;
+        groundBlend.height = fusionHeight;
+        // Sit just in front of the midground so the fog cloaks the seam.
+        groundBlend.zOffset = midground.zOffset - 2;
+        // At least as wide as the midground so the fog never reveals the seam.
+        groundBlend.widthScale = Math.max(groundBlend.widthScale, midground.widthScale);
     }
 
     /**
@@ -551,6 +602,7 @@ export class SceneLayerManager {
             parallaxStrength: raw.parallaxStrength ?? 0,
             stageFit: raw.stageFit,
             compositionRole: raw.compositionRole,
+            autoFit: raw.autoFit,
         };
     }
 

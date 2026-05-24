@@ -122,7 +122,8 @@
         "cameraOpacity": { "front": 0.7, "overview": 0.5 },
         "parallaxStrength": 0.04,
         "stageFit": "lower-stage",
-        "compositionRole": "groundBlend"
+        "compositionRole": "groundBlend",
+        "autoFit": true
       },
       {
         "id": "foreground_corners",
