@@ -64,6 +64,7 @@ export interface SceneLayerStack {
 
 export interface SceneLayerPreset extends SceneLayerStack {
     /** Legacy alias for old map exports. Prefer layers[]. */
+    skyVoidFill?: SceneLayerAsset;
     backAtmosphere?: SceneLayerAsset;
     mainMidground?: SceneLayerAsset;
     groundBlend?: SceneLayerAsset;

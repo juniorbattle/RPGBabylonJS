@@ -48,6 +48,7 @@ const aliasByRole = (preset: SceneLayerPreset): SceneLayerPreset => {
     const byRole = (role: SceneLayerCompositionRole): SceneLayerAsset | undefined =>
         preset.layers.find((entry) => entry.compositionRole === role);
 
+    const skyVoidFill = byRole('skyVoidFill');
     const backAtmosphere = byRole('backAtmosphere');
     const mainMidground = byRole('mainMidground');
     const groundBlend = byRole('groundBlend');
@@ -57,6 +58,7 @@ const aliasByRole = (preset: SceneLayerPreset): SceneLayerPreset => {
 
     return {
         ...preset,
+        skyVoidFill,
         backAtmosphere,
         mainMidground,
         groundBlend,

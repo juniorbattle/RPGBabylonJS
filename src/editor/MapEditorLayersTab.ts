@@ -19,6 +19,7 @@ const LEGACY_TO_ROLE: Record<LegacyLayerKey, SceneLayerCompositionRole> = {
 };
 
 const ROLE_LABELS: Partial<Record<SceneLayerCompositionRole, string>> = {
+    skyVoidFill: 'Sky void fill',
     backAtmosphere: 'Back atmosphere',
     mainMidground: 'Main midground',
     groundBlend: 'Ground blend',
@@ -188,6 +189,7 @@ function withLegacyAliases(stack: SceneLayerPreset): SceneLayerPreset {
         stack.layers.find(layer => layer.compositionRole === role);
     return {
         ...stack,
+        skyVoidFill: byRole('skyVoidFill'),
         backAtmosphere: byRole('backAtmosphere'),
         mainMidground: byRole('mainMidground'),
         groundBlend: byRole('groundBlend'),
@@ -916,6 +918,7 @@ function roleToId(role: SceneLayerCompositionRole): string {
 
 function defaultOrderForRole(role: SceneLayerCompositionRole): number {
     switch (role) {
+        case 'skyVoidFill': return -100;
         case 'backAtmosphere': return 0;
         case 'mainMidground': return 10;
         case 'groundBlend': return 20;

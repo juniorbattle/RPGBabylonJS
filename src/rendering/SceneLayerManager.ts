@@ -393,6 +393,7 @@ export class SceneLayerManager {
             preset.layers.find((layer) => layer.compositionRole === role);
         return {
             ...preset,
+            skyVoidFill: byRole('skyVoidFill'),
             backAtmosphere: byRole('backAtmosphere'),
             mainMidground: byRole('mainMidground'),
             groundBlend: byRole('groundBlend'),
