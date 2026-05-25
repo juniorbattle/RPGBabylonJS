@@ -706,6 +706,15 @@ export class CombatScene {
       this._diorama?.dispose();
       this._postFX?.dispose();
 
+      // Detect an active diorama : when present, it provides all the mid
+      // decoration (volumes + light shafts) so we opt-out of the procedural
+      // primitives and the additive god-rays quads by default, unless the
+      // diorama config explicitly asks to keep them.
+      const dioramaCfg = this._activeScenery.diorama;
+      const dioramaActive = !!dioramaCfg && dioramaCfg.enabled !== false;
+      const skipProceduralProps = dioramaActive && !dioramaCfg!.keepProceduralProps;
+      const skipGodRays         = dioramaActive && !dioramaCfg!.keepGodRays;
+
       this._backdrop = new SceneBackdropManager(
           this._scene,
           this._currentSceneryRoot,
@@ -714,13 +723,15 @@ export class CombatScene {
       this._backdrop.setup(this._activeScenery.backdrop);
 
       this._props3D = new SceneProps3DManager(this._scene, this._currentSceneryRoot);
-      void this._props3D.placeProps(this._activeScenery.props);
+      if (!skipProceduralProps) {
+          void this._props3D.placeProps(this._activeScenery.props);
+      }
 
       // Optional .glb diorama mega-prop (Tripo3D / Blender authored).
       // Awaited asynchronously without blocking the rest of the setup.
-      if (this._activeScenery.diorama) {
+      if (dioramaCfg) {
           this._diorama = new SceneDioramaManager(this._scene, this._currentSceneryRoot);
-          void this._diorama.setup(this._activeScenery.diorama);
+          void this._diorama.setup(dioramaCfg);
       }
 
       this._postFX = new ScenePostFX(this._scene, this._camera.babylonCamera);
@@ -733,8 +744,11 @@ export class CombatScene {
       this._scene.fogDensity = 0.012;
 
       // God rays : five oblique shafts of light coming down-right, parented
-      // to the scenery root so endCombat sweeps them away.
-      this.buildGodRays();
+      // to the scenery root so endCombat sweeps them away. Skipped when a
+      // diorama supplies its own painted light shafts.
+      if (!skipGodRays) {
+          this.buildGodRays();
+      }
 
       this._camera.onModeChanged = (mode) => {
           this._postFX?.setCinematicMode(mode === CameraMode.Focus);

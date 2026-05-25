@@ -440,7 +440,6 @@ export class MapEditor {
         widthScale: 12,
         depthScale: 12,
     };
-    private layerPreviewRoot!: TransformNode;
     // Legacy SceneLayerManager + MapEditorLayersTab removed.
     // The diorama scenery (backdrop + props 3D) is now configured at runtime in
     // CombatScene from `map_*.json > scenery`. A future SceneryEditorTab will
@@ -461,7 +460,6 @@ export class MapEditor {
         light.intensity = 1.0;
         this.propsRoot = new TransformNode("PropsRoot", this.scene);
         this.skyRoot   = new TransformNode("SkyRoot",   this.scene);
-        this.layerPreviewRoot = new TransformNode("LayerPreviewRoot", this.scene);
         await this.loadManifest();
         this.rebuildCombatGrid();
         this.buildEditorScenery();
@@ -485,14 +483,6 @@ export class MapEditor {
         this.camera.upperBetaLimit       = Math.PI / 2.05;
         this.camera.wheelDeltaPercentage = 0.01;
         this.camera.attachControl(this.canvas, true);
-    }
-
-    private focusLayerPreviewCamera(): void {
-        const mapD = this.customD * this.tileSize;
-        this.camera.alpha = -Math.PI / 2;
-        this.camera.beta = Math.PI / 3.1;
-        this.camera.radius = Math.max(24, mapD * 2.6);
-        this.camera.target = new Vector3(0, this.currentGridElevation + 7.5, mapD / 2 + 8);
     }
 
     private async loadManifest(): Promise<void> {
@@ -870,14 +860,14 @@ export class MapEditor {
             <button id="modeBrush" class="btn" style="background:#1e2030;color:#8090a8;">Placer</button>
         </div>
         <div class="tabs">
-            <button class="tab-btn active" data-tab="tab-layers">Layers</button>
-            <button class="tab-btn"        data-tab="tab-grid">Grille</button>
+            <button class="tab-btn"        data-tab="tab-layers">Layers</button>
+            <button class="tab-btn active" data-tab="tab-grid">Grille</button>
             <button class="tab-btn"        data-tab="tab-props">Props</button>
             <button class="tab-btn"        data-tab="tab-io">I/O</button>
         </div>
 
         <!-- GRILLE -->
-        <div id="tab-grid" class="editor-tab" style="display:none;">
+        <div id="tab-grid" class="editor-tab" style="display:block;">
             <div class="sec">
                 <div class="sec-t">Dimensions grille</div>
                 <div class="row">
@@ -992,7 +982,7 @@ export class MapEditor {
         </div>
 
         <!-- LAYERS PNG -->
-        <div id="tab-layers" class="editor-tab"></div>
+        <div id="tab-layers" class="editor-tab" style="display:none;"></div>
 
         <!-- I/O -->
         <div id="tab-io" class="editor-tab" style="display:none;">
@@ -1143,7 +1133,6 @@ export class MapEditor {
                 const id = el.getAttribute('data-tab');
                 if (id) {
                     document.getElementById(id)!.style.display='block';
-                    if (id === 'tab-layers') this.focusLayerPreviewCamera();
                 }
             });
         });

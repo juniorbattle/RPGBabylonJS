@@ -208,6 +208,20 @@ export interface DioramaConfig {
      * `.glb` (useful when the .glb already bakes its own lighting).
      */
     receivesLighting?: boolean;
+    /**
+     * If `true`, keep the procedural `SceneryConfig.props` placements (trees,
+     * rocks, bushes...) even though a diorama is active. Default `false` —
+     * the diorama is expected to provide all mid-scene decor, so the
+     * procedural primitives are skipped to avoid overlap with the `.glb`.
+     */
+    keepProceduralProps?: boolean;
+    /**
+     * If `true`, keep the additive god-rays quads built by
+     * `CombatScene.buildGodRays()` even though a diorama is active. Default
+     * `false` — most Tripo3D / Blender dioramas embed painted light shafts
+     * directly and the additive quads would create double rays.
+     */
+    keepGodRays?: boolean;
 }
 
 /* -------------------------------------------------------------------------- */
