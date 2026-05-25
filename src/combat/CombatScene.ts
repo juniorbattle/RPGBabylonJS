@@ -544,6 +544,10 @@ export class CombatScene {
           baseSurfaceY = mapData.floorY;
       }
       // 0. SCENERY CONFIG : merge map override with biome default preset.
+      // The override is intentionally shallow per-section so a partial JSON
+      // (e.g. only `backdrop.gradient`) does not wipe the other defaults.
+      // The `diorama` block is taken verbatim from the override when present
+      // (or falls back to the preset's diorama if the biome ships one).
       const defaultScenery = getDefaultScenery(biome);
       const sceneryOverride = mapData?.scenery;
       const sceneryConfig: SceneryConfig = sceneryOverride
@@ -553,6 +557,7 @@ export class CombatScene {
               props: sceneryOverride.props ?? defaultScenery.props,
               postFX: { ...defaultScenery.postFX, ...sceneryOverride.postFX },
               ambient: { ...defaultScenery.ambient, ...sceneryOverride.ambient } as SceneryConfig['ambient'],
+              diorama: sceneryOverride.diorama ?? defaultScenery.diorama,
           }
           : defaultScenery;
       this._activeScenery = sceneryConfig;
@@ -608,7 +613,14 @@ export class CombatScene {
       terrainPlane.material = terMat;
       terrainPlane.parent = sceneryRoot;
 
-      this.buildStageGroundAccent(sceneryRoot, mapW, mapD, baseSurfaceY, preset);
+      // Stage ground accent : soft grass disc that blends the plateau into
+      // the decor. Skipped when a diorama is active (it authors its own
+      // ground), unless explicitly kept via `diorama.keepStageGroundAccent`.
+      const dioramaCfg = sceneryConfig.diorama;
+      const dioramaActiveForGround = !!dioramaCfg && dioramaCfg.enabled !== false;
+      if (!dioramaActiveForGround || dioramaCfg!.keepStageGroundAccent) {
+          this.buildStageGroundAccent(sceneryRoot, mapW, mapD, baseSurfaceY, preset);
+      }
 
       // 2. DIORAMA SCENERY : single-plane backdrop + 3D props.
       // The TacticalCamera is built AFTER buildDioramaScenery, so we defer
@@ -728,10 +740,21 @@ export class CombatScene {
       }
 
       // Optional .glb diorama mega-prop (Tripo3D / Blender authored).
-      // Awaited asynchronously without blocking the rest of the setup.
+      // Awaited asynchronously without blocking the rest of the setup. If the
+      // load fails AND we had skipped the procedural props, place them now as
+      // a fallback so the scene is not left without any mid decor.
       if (dioramaCfg) {
           this._diorama = new SceneDioramaManager(this._scene, this._currentSceneryRoot);
-          void this._diorama.setup(dioramaCfg);
+          const propsRef = this._props3D;
+          const sceneryRef = this._activeScenery;
+          void this._diorama.setup(dioramaCfg).then(() => {
+              if (this._diorama && !this._diorama.isLoaded() && skipProceduralProps) {
+                  console.info(
+                      '[CombatScene] Diorama did not load — placing procedural props as fallback.',
+                  );
+                  void propsRef.placeProps(sceneryRef.props);
+              }
+          });
       }
 
       this._postFX = new ScenePostFX(this._scene, this._camera.babylonCamera);

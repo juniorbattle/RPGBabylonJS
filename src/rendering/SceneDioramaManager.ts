@@ -60,21 +60,31 @@ export class SceneDioramaManager {
      */
     async setup(config: DioramaConfig): Promise<void> {
         this.dispose();
-        if (config.enabled === false) return;
+        if (config.enabled === false) {
+            console.info(`[SceneDioramaManager] '${config.file}' disabled via config.enabled = false, skipping load.`);
+            return;
+        }
 
         const url = PUBLIC_DIORAMAS;
         const fileName = config.file;
+        const fullPath = `${url}${fileName}`;
+        const startedAt = performance.now();
 
         let result;
         try {
             result = await SceneLoader.ImportMeshAsync('', url, fileName, this.scene);
         } catch (err) {
             console.warn(
-                `[SceneDioramaManager] Failed to load ${url}${fileName} :`,
+                `[SceneDioramaManager] Failed to load '${fullPath}'. ` +
+                `Expected location : public/assets/dioramas/${fileName}. ` +
+                `See public/assets/dioramas/README.md for the Tripo3D / Blender workflow. ` +
+                `Falling back to procedural scenery (props + god rays will still render).`,
                 err,
             );
             return;
         }
+
+        const loadMs = Math.round(performance.now() - startedAt);
 
         this.anchor = new TransformNode('DioramaRoot', this.scene);
         this.anchor.parent = this.parent;
@@ -94,10 +104,12 @@ export class SceneDioramaManager {
 
         // Track everything for cleanup.
         this.importedMeshes = result.meshes.slice();
+        let totalVertices = 0;
         for (const mesh of this.importedMeshes) {
             mesh.isPickable = false;
             mesh.alwaysSelectAsActiveMesh = true;
             mesh.renderingGroupId = 0;
+            totalVertices += mesh.getTotalVertices?.() ?? 0;
             // Apply lighting toggle : if the diorama already bakes lighting
             // into its textures, disable scene lighting on its materials so
             // they don't get re-shaded by sun + rim + spot.
@@ -110,6 +122,23 @@ export class SceneDioramaManager {
                 this.collectMaterialTextures(mesh.material);
             }
         }
+
+        console.info(
+            `[SceneDioramaManager] Loaded '${fullPath}' in ${loadMs}ms : ` +
+            `${this.importedMeshes.length} meshes, ${this.importedMaterials.length} materials, ` +
+            `${this.importedTextures.length} textures, ~${totalVertices} vertices. ` +
+            `Anchored at (${x}, ${y}, ${z}) rotation ${config.rotationY ?? 0}° scale ${scale}.`,
+        );
+    }
+
+    /**
+     * `true` once a `.glb` has been successfully imported and parented.
+     * Stays `false` if the load failed or the diorama was disabled. Used by
+     * `CombatScene.setupSceneryWithCamera()` to fall back to procedural
+     * props when the diorama could not load.
+     */
+    isLoaded(): boolean {
+        return this.anchor !== null;
     }
 
     dispose(): void {

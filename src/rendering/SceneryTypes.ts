@@ -222,6 +222,13 @@ export interface DioramaConfig {
      * directly and the additive quads would create double rays.
      */
     keepGodRays?: boolean;
+    /**
+     * If `true`, keep the stage ground accent disc (the soft circular
+     * grass texture drawn under the combat plateau to blend it into the
+     * decor). Default `false` — a diorama is expected to author its own
+     * ground around the plateau, and the accent would visibly tile over it.
+     */
+    keepStageGroundAccent?: boolean;
 }
 
 /* -------------------------------------------------------------------------- */
