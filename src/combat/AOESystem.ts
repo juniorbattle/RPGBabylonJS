@@ -92,11 +92,13 @@ export class AOESystem {
   // ─── Materials ─────────────────────────────────────────────────────────────
 
   private buildMaterials(): void {
-    this.discTexture = this.createSoftCircleTexture('aoe_soft_disc_texture', 0.78, 0.14);
-    // Range texture is a RING (transparent core, bright contour, transparent
-    // halo) so the max-range limit reads as a clear circular boundary rather
-    // than a flat wash that the fog and vignette swallow.
-    this.rangeTexture = this.createSoftRingTexture('aoe_soft_range_texture');
+    // All AOE overlays share the same hollow-ring style now : the centre
+    // stays transparent so the combat grid + sprites remain readable inside
+    // the circle, and a bright contour band marks the limit. One texture is
+    // reused by every overlay material (target disc, heal disc, invalid
+    // disc, max range ring) — they only differ by diffuse/emissive tint.
+    this.discTexture = this.createSoftRingTexture('aoe_soft_ring_texture');
+    this.rangeTexture = this.discTexture;
 
     // Damage AOE — semi-transparent red
     this.matValid = new StandardMaterial('aoe_valid', this.scene);
@@ -149,27 +151,6 @@ export class AOESystem {
     this.matRange.alpha          = 0.85;
     this.matRange.backFaceCulling= false;
     this.configureOverlayMaterial(this.matRange, -6);
-  }
-
-  private createSoftCircleTexture(name: string, coreAlpha: number, edgeAlpha: number): DynamicTexture {
-    const texture = new DynamicTexture(name, { width: 256, height: 256 }, this.scene, false);
-    texture.hasAlpha = true;
-
-    const ctx = texture.getContext() as CanvasRenderingContext2D;
-    ctx.clearRect(0, 0, 256, 256);
-
-    const glow = ctx.createRadialGradient(128, 128, 4, 128, 128, 124);
-    glow.addColorStop(0.0, `rgba(255,255,255,${coreAlpha})`);
-    glow.addColorStop(0.48, `rgba(255,255,255,${Math.max(edgeAlpha, coreAlpha * 0.34)})`);
-    glow.addColorStop(0.82, `rgba(255,255,255,${edgeAlpha})`);
-    glow.addColorStop(1.0, 'rgba(255,255,255,0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(128, 128, 124, 0, Math.PI * 2);
-    ctx.fill();
-
-    texture.update(false);
-    return texture;
   }
 
   /**
@@ -704,9 +685,10 @@ export class AOESystem {
 
   dispose(): void {
     this.deactivate();
+    // discTexture and rangeTexture share the same DynamicTexture instance
+    // (the single soft ring), so we dispose it once and null both refs.
     this.discTexture?.dispose();
     this.discTexture = null;
-    this.rangeTexture?.dispose();
     this.rangeTexture = null;
     this.matValid.dispose();
     this.matHeal.dispose();
