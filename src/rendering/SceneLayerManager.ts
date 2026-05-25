@@ -13,6 +13,7 @@ import {
 import {
     CinematicIntent,
     CinematicIntentSettings,
+    ImageFit,
     SceneLayerAsset,
     SceneLayerCameraMode,
     SceneLayerCompositionRole,
@@ -61,6 +62,72 @@ const mergeLayer = (base: SceneLayerAsset, override: Partial<SceneLayerAsset>): 
     cameraYOffset: { ...(base.cameraYOffset ?? {}), ...(override.cameraYOffset ?? {}) },
     cameraZOffset: { ...(base.cameraZOffset ?? {}), ...(override.cameraZOffset ?? {}) },
 });
+
+/**
+ * Maps a source image onto its plane's UV space according to the requested
+ * `ImageFit`. Mutates the texture's wrap modes, uScale/vScale, uOffset/vOffset.
+ *
+ *  - stretch  : 1:1 UV, no transform; image distorts to plane aspect.
+ *  - cover    : crop on dominant axis so the plane is fully covered. The
+ *               cropped fraction is centered (offset = (1 - scale) / 2).
+ *  - tile-x   : wrap U, vScale=1, uScale tuned so the image repeats just
+ *               enough to cover the plane width given its native aspect.
+ *  - tile-xy  : same as tile-x but also wraps V. Requires a fully seamless
+ *               texture; otherwise visible seams will appear.
+ *
+ * `planeAspect` = planeWidth / planeHeight (world units).
+ * `imgAspect`   = sourceImageWidth / sourceImageHeight (native pixels).
+ */
+function applyImageFit(
+    tex: Texture,
+    fit: ImageFit,
+    planeAspect: number,
+    imgAspect: number
+): void {
+    switch (fit) {
+        case 'stretch':
+            tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+            tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+            tex.uScale = 1;
+            tex.vScale = 1;
+            tex.uOffset = 0;
+            tex.vOffset = 0;
+            return;
+        case 'cover':
+            tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+            tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+            if (imgAspect >= planeAspect) {
+                // Source is wider than the plane → crop horizontally.
+                tex.uScale = planeAspect / imgAspect;
+                tex.vScale = 1;
+                tex.uOffset = (1 - tex.uScale) / 2;
+                tex.vOffset = 0;
+            } else {
+                // Source is taller than the plane → crop vertically.
+                tex.uScale = 1;
+                tex.vScale = imgAspect / planeAspect;
+                tex.uOffset = 0;
+                tex.vOffset = (1 - tex.vScale) / 2;
+            }
+            return;
+        case 'tile-x':
+            tex.wrapU = Texture.WRAP_ADDRESSMODE;
+            tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+            tex.uScale = Math.max(1, planeAspect / imgAspect);
+            tex.vScale = 1;
+            tex.uOffset = 0;
+            tex.vOffset = 0;
+            return;
+        case 'tile-xy':
+            tex.wrapU = Texture.WRAP_ADDRESSMODE;
+            tex.wrapV = Texture.WRAP_ADDRESSMODE;
+            tex.uScale = Math.max(1, planeAspect / imgAspect);
+            tex.vScale = 1;
+            tex.uOffset = 0;
+            tex.vOffset = 0;
+            return;
+    }
+}
 
 /**
  * Default per-intent alpha scaling. Tuned so foreground elements step
@@ -492,12 +559,21 @@ export class SceneLayerManager {
             );
             tex.hasAlpha = usesTextureAlpha;
             tex.getAlphaFromRGB = alphaKey === 'black' || alphaKey === 'luminance';
-            tex.wrapU = Texture.CLAMP_ADDRESSMODE;
-            tex.wrapV = Texture.CLAMP_ADDRESSMODE;
-            tex.uScale = cfg.uvScaleX ?? 1;
-            tex.vScale = cfg.uvScaleY ?? 1;
-            tex.uOffset = cfg.uvOffsetX ?? 0;
-            tex.vOffset = cfg.uvOffsetY ?? 0;
+
+            // If imageFit is set, derive UV transform from plane vs image aspect.
+            // Otherwise honour the legacy uvScale*/uvOffset* fields verbatim.
+            if (cfg.imageFit) {
+                const planeAspect = planeW / Math.max(0.01, planeH);
+                const imgAspect = cfg.imageAspectRatio ?? 1;
+                applyImageFit(tex, cfg.imageFit, planeAspect, imgAspect);
+            } else {
+                tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+                tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+                tex.uScale = cfg.uvScaleX ?? 1;
+                tex.vScale = cfg.uvScaleY ?? 1;
+                tex.uOffset = cfg.uvOffsetX ?? 0;
+                tex.vOffset = cfg.uvOffsetY ?? 0;
+            }
 
             mat.diffuseTexture = tex;
             mat.useAlphaFromDiffuseTexture = usesTextureAlpha;

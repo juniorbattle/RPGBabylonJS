@@ -5,6 +5,21 @@ export type SceneLayerAlphaKey = 'none' | 'texture' | 'white' | 'black' | 'lumin
 export type SceneLayerCameraMode = 'front' | 'overview' | 'focus';
 export type SceneLayerStageFit = 'full-stage' | 'lower-stage' | 'foreground-frame' | 'fx-overlay' | 'sky-void';
 
+/**
+ * How an image texture is fitted into its plane's geometry.
+ *
+ * - `stretch` : image is stretched to fill the plane exactly. Distorts the
+ *               image if its aspect ratio differs from the plane's.
+ * - `cover`   : image fills the plane without leaving any transparent edges.
+ *               Crops the overflow on the dominant axis. Recommended for
+ *               background paintings where coverage matters more than
+ *               showing the entire image (CSS object-fit: cover analog).
+ * - `tile-x`  : image repeats horizontally. Height is stretched. Requires a
+ *               horizontally seamless source.
+ * - `tile-xy` : image repeats on both axes. Requires a fully seamless source.
+ */
+export type ImageFit = 'stretch' | 'cover' | 'tile-x' | 'tile-xy';
+
 export type SceneLayerCompositionRole =
     | 'skyVoidFill'
     | 'backAtmosphere'
@@ -79,6 +94,18 @@ export interface SceneLayerAsset {
      * guarantee a clean 2D-3D ground fusion regardless of map dimensions.
      */
     autoFit?: boolean;
+    /**
+     * How the texture image is mapped onto the plane. Defaults to 'cover'
+     * for backdrop / midground / foreground roles and 'stretch' for the
+     * solid-color skyVoidFill. See `ImageFit` for details.
+     */
+    imageFit?: ImageFit;
+    /**
+     * Native aspect ratio (width / height) of the source PNG. Used by
+     * `cover` and `tile-x` to compute UV scale/offset. If omitted, the
+     * image is assumed square (1:1) and `cover` may behave unexpectedly.
+     */
+    imageAspectRatio?: number;
 }
 
 export interface SceneLayerStack {
