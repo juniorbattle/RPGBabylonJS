@@ -93,7 +93,10 @@ export class AOESystem {
 
   private buildMaterials(): void {
     this.discTexture = this.createSoftCircleTexture('aoe_soft_disc_texture', 0.78, 0.14);
-    this.rangeTexture = this.createSoftCircleTexture('aoe_soft_range_texture', 0.22, 0.04);
+    // Range texture is a RING (transparent core, bright contour, transparent
+    // halo) so the max-range limit reads as a clear circular boundary rather
+    // than a flat wash that the fog and vignette swallow.
+    this.rangeTexture = this.createSoftRingTexture('aoe_soft_range_texture');
 
     // Damage AOE — semi-transparent red
     this.matValid = new StandardMaterial('aoe_valid', this.scene);
@@ -135,14 +138,15 @@ export class AOESystem {
     this.matBorder.alpha         = 0.94;
     this.configureOverlayMaterial(this.matBorder, -10);
 
-    // Range limit — light grey / subtle
+    // Range limit — visible contour ring. Bumped alpha and emissive so the
+    // circle survives the combat scene's exponential fog + vignette.
     this.matRange = new StandardMaterial('aoe_range_limit', this.scene);
     this.matRange.diffuseTexture = this.rangeTexture;
     this.matRange.opacityTexture = this.rangeTexture;
     this.matRange.useAlphaFromDiffuseTexture = true;
-    this.matRange.diffuseColor   = new Color3(0.78, 0.92, 1.0);
-    this.matRange.emissiveColor  = new Color3(0.12, 0.22, 0.34);
-    this.matRange.alpha          = 0.18;
+    this.matRange.diffuseColor   = new Color3(1.00, 0.78, 0.52);
+    this.matRange.emissiveColor  = new Color3(0.85, 0.50, 0.22);
+    this.matRange.alpha          = 0.85;
     this.matRange.backFaceCulling= false;
     this.configureOverlayMaterial(this.matRange, -6);
   }
@@ -160,6 +164,41 @@ export class AOESystem {
     glow.addColorStop(0.82, `rgba(255,255,255,${edgeAlpha})`);
     glow.addColorStop(1.0, 'rgba(255,255,255,0)');
     ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(128, 128, 124, 0, Math.PI * 2);
+    ctx.fill();
+
+    texture.update(false);
+    return texture;
+  }
+
+  /**
+   * Paints a thick contour ring : transparent core (so the grid stays
+   * readable inside the range), strong opaque band near the outer edge
+   * (so the max-range limit is clearly visible against a foggy scene),
+   * faint halo outside. Used as both diffuse and opacity texture on the
+   * range mesh so a single MeshBuilder.CreateDisc renders as a ring.
+   */
+  private createSoftRingTexture(name: string): DynamicTexture {
+    const texture = new DynamicTexture(name, { width: 256, height: 256 }, this.scene, false);
+    texture.hasAlpha = true;
+
+    const ctx = texture.getContext() as CanvasRenderingContext2D;
+    ctx.clearRect(0, 0, 256, 256);
+
+    // Stops are radial fractions of the 124-pixel radius.
+    // 0.00 -> 0.62 : fully transparent core (grid stays readable).
+    // 0.62 -> 0.78 : ramp up to opaque white (band start).
+    // 0.78 -> 0.90 : opaque peak (the visible contour).
+    // 0.90 -> 1.00 : ramp back down to transparent (outer halo).
+    const ring = ctx.createRadialGradient(128, 128, 4, 128, 128, 124);
+    ring.addColorStop(0.00, 'rgba(255,255,255,0.00)');
+    ring.addColorStop(0.62, 'rgba(255,255,255,0.00)');
+    ring.addColorStop(0.72, 'rgba(255,255,255,0.55)');
+    ring.addColorStop(0.82, 'rgba(255,255,255,1.00)');
+    ring.addColorStop(0.92, 'rgba(255,255,255,0.55)');
+    ring.addColorStop(1.00, 'rgba(255,255,255,0.00)');
+    ctx.fillStyle = ring;
     ctx.beginPath();
     ctx.arc(128, 128, 124, 0, Math.PI * 2);
     ctx.fill();
@@ -466,7 +505,8 @@ export class AOESystem {
     let discGlow = new Color3(0.64, 0.10, 0.06);
     let ring = new Color3(1.0, 0.62, 0.44);
     let ringGlow = new Color3(0.96, 0.28, 0.14);
-    let range = new Color3(1.0, 0.68, 0.46);
+    let range = new Color3(1.00, 0.78, 0.52);
+    let rangeGlow = new Color3(0.85, 0.50, 0.22);
 
     if (helpful) {
       disc = new Color3(0.12, 0.92, 0.42);
@@ -474,12 +514,14 @@ export class AOESystem {
       ring = new Color3(0.58, 1.0, 0.72);
       ringGlow = new Color3(0.12, 0.82, 0.38);
       range = new Color3(0.58, 1.0, 0.76);
+      rangeGlow = new Color3(0.18, 0.78, 0.34);
     } else if (inspect) {
       disc = new Color3(0.22, 0.58, 1.0);
       discGlow = new Color3(0.06, 0.28, 0.72);
       ring = new Color3(0.55, 0.86, 1.0);
       ringGlow = new Color3(0.12, 0.50, 1.0);
       range = new Color3(0.54, 0.80, 1.0);
+      rangeGlow = new Color3(0.18, 0.46, 0.92);
     }
 
     if (!inRange) {
@@ -494,6 +536,7 @@ export class AOESystem {
     this.matBorder.diffuseColor = ring;
     this.matBorder.emissiveColor = ringGlow;
     this.matRange.diffuseColor = range;
+    this.matRange.emissiveColor = rangeGlow;
   }
 
   private isInspectAction(action: ActData | null): boolean {
