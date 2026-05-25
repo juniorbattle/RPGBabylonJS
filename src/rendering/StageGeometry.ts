@@ -43,10 +43,21 @@ export type StageGeometry = Partial<Record<SceneLayerCompositionRole, RoleStageB
  *
  *  - widthMul  : plane width   = stageWidth * widthMul
  *  - heightMul : plane height  = stageWidth * heightMul
- *  - yCenter   : absolute world-Y of the plane center (anchored above the
- *                ground; tuned for the default tactical camera tilt).
+ *  - yCenter   : absolute world-Y of the plane center (in WORLD units, NOT
+ *                relative to baseSurfaceY). Tuned so that the visible band
+ *                of the plane intersects both the Normal-camera ray
+ *                (looking ~10deg down at chest height) and the Overview-
+ *                camera ray (plunging ~34deg from y=24). Negative values
+ *                are normal and expected: the Normal camera's gaze at
+ *                z=+30 hits y~-4, so planes parked at y=+8 fly out of
+ *                frame entirely.
  *  - zOffset   : distance behind the plateau center along +Z (back layers)
  *                or in front of it along -Z (foreground / overlays).
+ *
+ * Plane aspect ratios are intentionally kept close to 1:1 because the
+ * available PNG library is square. When commissioning new artwork at the
+ * documented diorama ratios (3:1 horizon bands, etc.), update widthMul /
+ * heightMul accordingly and set imageAspectRatio on each layer.
  *
  * NOTE: groundBlend is intentionally absent — it is computed dynamically by
  * SceneLayerManager.applyAutoFit() from the active mainMidground box.
@@ -55,29 +66,32 @@ const ROLE_PROPORTIONS: Record<
     Exclude<SceneLayerCompositionRole, 'groundBlend'>,
     { widthMul: number; heightMul: number; yCenter: number; zOffset: number }
 > = {
-    // Solid color backstop. Covers every camera angle including overview
-    // plunge and focus tight crop. Largest plane in the diorama.
-    skyVoidFill:        { widthMul: 2.5,  heightMul: 1.80, yCenter: 15, zOffset: 50 },
+    // Solid color backstop. Largest plane, covers every camera angle.
+    // Centered just below combat level so the Overview plunge still sees
+    // the lower half of it.
+    skyVoidFill:        { widthMul: 4.5, heightMul: 4.0, yCenter: -5, zOffset: 50 },
 
-    // Distant atmosphere band: sky / far canopy / mist. Wide-but-short:
-    // a thin horizon strip aligned with the upper third of the frame.
-    backAtmosphere:     { widthMul: 1.6,  heightMul: 0.50, yCenter: 8,  zOffset: 32 },
+    // Distant atmosphere: sky / far canopy / mist. Large square plane so
+    // the Normal-camera gaze (y~-4 at this depth) lands near the lower
+    // third of the painting.
+    backAtmosphere:     { widthMul: 4.5, heightMul: 3.8, yCenter: -5, zOffset: 32 },
 
-    // Hero backdrop: dense forest just behind the combat plateau. Centered
-    // on the sprite chest height so silhouettes read cleanly.
-    mainMidground:      { widthMul: 1.3,  heightMul: 0.45, yCenter: 5,  zOffset: 22 },
+    // Hero backdrop: dense forest behind the combat plateau. Slightly
+    // higher than the back layer because the Normal-camera gaze at z=25
+    // sits a couple units higher (y~-2).
+    mainMidground:      { widthMul: 4.3, heightMul: 3.3, yCenter: -3, zOffset: 22 },
 
-    // Foreground frame: trees / pillars / vignette corners. In front of the
-    // plateau (negative zOffset) and slightly wider than the midground.
-    foregroundCorners:  { widthMul: 1.6,  heightMul: 0.70, yCenter: 4,  zOffset: -3 },
+    // Foreground frame: trees / pillars / vignette corners. Sits in front
+    // of the plateau (zOffset<0), wider than the midground.
+    foregroundCorners:  { widthMul: 5.0, heightMul: 4.5, yCenter: -4, zOffset: -3 },
 
-    // Upper canopy: branches / leaves overhanging the frame from the top.
-    // Wide and short, sits high above the sprites.
-    upperCanopy:        { widthMul: 1.3,  heightMul: 0.35, yCenter: 12, zOffset: -3 },
+    // Upper canopy: branches overhanging from the top of the frame. Sits
+    // high above the action (yCenter > 0) so it never occludes sprites.
+    upperCanopy:        { widthMul: 4.4, heightMul: 2.7, yCenter:  8, zOffset: -3 },
 
-    // FX overlay: particles, glow, mist. Often additive, in front of all
-    // backdrop layers, intended to be subtle (low alpha by default).
-    fxOverlay:          { widthMul: 1.4,  heightMul: 0.55, yCenter: 6,  zOffset: -1 },
+    // FX overlay: particles, glow, mist. Centered around sprite chest
+    // height for additive lighting effects.
+    fxOverlay:          { widthMul: 5.0, heightMul: 4.0, yCenter: -3, zOffset: -1 },
 };
 
 /**

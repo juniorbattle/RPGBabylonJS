@@ -151,20 +151,22 @@ Pour les roles connus, le JSON ne decrit plus que l'**art** et le **comportement
 
 Les champs `widthScale / height / yOffset / zOffset` y sont laisses inertes : `applyStageGeometry()` les ecrase. Pour un layer custom sans role, ils reprennent leur sens classique.
 
-### Table des ratios cibles (mai 2026)
+### Table des dimensions actuelles (juin 2026)
 
-`ROLE_PROPORTIONS` (cf. `StageGeometry.ts`) sur une map 8x8 (`stageWidth = 8u`) donne :
+`ROLE_PROPORTIONS` (cf. `StageGeometry.ts`) sur une map 8x8 (`stageWidth = 8u`). Les `yCenter` sont negatifs car la camera Normal regarde 10deg vers le bas : son rayon a `z=+30` retombe a `y~-4`, donc tout plane place a `y=+8` sort du cadre. Les aspects sont proches de 1:1 pour matcher la bibliotheque PNG existante.
 
-| Role                | Width   | Height  | yCenter | zOffset | Aspect cible | Format PNG recommande |
-| ------------------- | ------- | ------- | ------- | ------- | ------------ | --------------------- |
-| `skyVoidFill`       | 20 u    | 14.4 u  | +15     | +50     | ~1.4         | Couleur unie ou degrade vertical 1024x720 |
-| `backAtmosphere`    | 12.8 u  | 4.0 u   | +8      | +32     | **3.2**      | Bande horizon 3072x960 |
-| `mainMidground`     | 10.4 u  | 3.6 u   | +5      | +22     | **2.9**      | Foret dense 2900x1000 |
-| `foregroundCorners` | 12.8 u  | 5.6 u   | +4      | -3      | **2.3**      | Cadre / coins 2300x1000, alpha au centre |
-| `upperCanopy`       | 10.4 u  | 2.8 u   | +12     | -3      | **3.7**      | Feuillage haut 2960x800 |
-| `fxOverlay`         | 11.2 u  | 4.4 u   | +6      | -1      | **2.5**      | Particules / brume 2500x1000 (seamless ideal) |
+| Role                | Width  | Height | yCenter | zOffset | Aspect plane | Format PNG ideal a terme |
+| ------------------- | ------ | ------ | ------- | ------- | ------------ | ------------------------ |
+| `skyVoidFill`       | 36 u   | 32 u   | -5      | +50     | 1.13         | Couleur unie ou degrade vertical |
+| `backAtmosphere`    | 36 u   | 30.4 u | -5      | +32     | 1.18         | Foret lointaine 1024x900 (ou 16:9 a terme) |
+| `mainMidground`     | 34.4 u | 26.4 u | -3      | +22     | 1.30         | Foret dense 1024x800 |
+| `foregroundCorners` | 40 u   | 36 u   | -4      | -3      | 1.11         | Cadre / coins 1024x900, alpha au centre |
+| `upperCanopy`       | 35.2 u | 21.6 u | +8      | -3      | 1.63         | Feuillage haut 1024x640 |
+| `fxOverlay`         | 40 u   | 32 u   | -3      | -1      | 1.25         | Particules / brume 1024x800 (seamless si tile) |
 
-Les images actuelles utilisent souvent un ratio ~1:1 ; le systeme les traite via `imageFit: cover` (le centre de la PNG est conserve, les bords sont croppes). Pour eliminer le crop, generer ou commander des images aux ratios ci-dessus puis mettre `imageAspectRatio` au ratio natif (ex: 3.2 pour back_atmosphere).
+Les images actuelles utilisent un ratio ~1:1 ; comme les plane aspects sont eux aussi proches de 1:1, `imageFit: cover` ne crop quasiment pas. Pour passer plus tard a un look "diorama horizontal" (bandes 3:1 type backdrop cinematic), commander des PNG aux nouveaux ratios et :
+1. mettre `imageAspectRatio` au ratio natif de la nouvelle PNG (ex: `3.0`),
+2. ajuster `heightMul` dans `ROLE_PROPORTIONS` pour que `widthMul/heightMul` matche ce ratio.
 
 ### Workflow nouveau biome
 
