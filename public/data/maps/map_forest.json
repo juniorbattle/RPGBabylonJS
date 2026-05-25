@@ -30,27 +30,27 @@
     "biome": "forest",
     "backdrop": {
       "gradient": {
-        "top":    [0.025, 0.055, 0.060],
-        "bottom": [0.080, 0.190, 0.140]
+        "top":    [0.040, 0.090, 0.110],
+        "bottom": [0.140, 0.280, 0.220]
       },
       "distance": 80,
       "parallaxFactor": 0.12,
       "oversize": 1.35
     },
     "postFX": {
-      "vignetteIntensity": 0.45,
-      "vignetteColor":     [0.01, 0.02, 0.02],
-      "bloomThreshold":    0.85,
-      "bloomWeight":       0.45,
+      "vignetteIntensity": 0.55,
+      "vignetteColor":     [0.005, 0.015, 0.020],
+      "bloomThreshold":    0.70,
+      "bloomWeight":       0.55,
       "grain":             4,
       "toneMapping":       true,
-      "exposure":          1.0,
-      "contrast":          1.08
+      "exposure":          1.15,
+      "contrast":          1.18
     },
     "ambient": {
-      "color": [0.40, 1.00, 0.30],
-      "count": 24,
-      "alpha": [0.10, 0.30]
+      "color": [0.45, 1.00, 0.40],
+      "count": 28,
+      "alpha": [0.12, 0.34]
     }
   }
 }

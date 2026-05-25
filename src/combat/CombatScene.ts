@@ -5,7 +5,7 @@
  */
 
 import {
-  Engine, Scene, HemisphericLight, DirectionalLight,
+  Engine, Scene, HemisphericLight, DirectionalLight, SpotLight,
   Vector3, TransformNode, MeshBuilder, StandardMaterial, Color3, Color4,
   DefaultRenderingPipeline, Texture, DynamicTexture
 } from '@babylonjs/core';
@@ -344,21 +344,70 @@ export class CombatScene {
     }
 
     this._scene.lights.slice().forEach(l => {
-        if (l.name === "sunCombat" || l.name === "ambCombat") l.dispose();
+        if (
+            l.name === 'sunCombat' ||
+            l.name === 'ambCombat' ||
+            l.name === 'rimCombat' ||
+            l.name === 'heroSpotCombat'
+        ) l.dispose();
     });
   }
 
+  /**
+   * Dramatic HD-2D lighting stack :
+   *   - Hemispheric ambient (boosted) so shadow zones still read.
+   *   - Warm directional sun coming front-right-above, the signature
+   *     Octopath / Triangle Strategy key light.
+   *   - Cool blue rim-light coming from behind so prop silhouettes
+   *     detach cleanly from the backdrop.
+   *   - Magical hero spotlight aimed straight down at the plateau
+   *     center so combatants are clearly the focal point.
+   *
+   * All four lights are tagged with the "Combat" suffix so endCombat()
+   * disposes them in one sweep.
+   */
   private setupLighting(preset: CombatArtPreset): void {
+    // 1. AMBIENT (boosted +60%) — keep details readable in shadows.
     const amb = new HemisphericLight('ambCombat', new Vector3(0, 1, 0), this._scene);
     amb.diffuse = preset.ambient.diffuse;
     amb.groundColor = preset.ambient.ground;
-    amb.intensity = preset.ambient.intensity;
-    
+    amb.intensity = preset.ambient.intensity * 1.6;
+
+    // 2. SUN (boosted +40%) — warm directional key light.
     const sun = new DirectionalLight('sunCombat', preset.sun.direction, this._scene);
     sun.diffuse = preset.sun.diffuse;
     sun.specular = preset.sun.specular;
-    sun.intensity = preset.sun.intensity;
+    sun.intensity = preset.sun.intensity * 1.4;
     sun.position = preset.sun.position;
+
+    // 3. RIM-LIGHT — cool back-light. Direction = roughly opposite of
+    // the sun on the XZ plane so the back of every prop catches a faint
+    // blue edge highlight. Intensity intentionally subtle.
+    const rim = new DirectionalLight(
+      'rimCombat',
+      new Vector3(0.4, -0.3, -1.0).normalize(),
+      this._scene
+    );
+    rim.diffuse = new Color3(0.32, 0.52, 0.78);
+    rim.specular = new Color3(0.2, 0.3, 0.5);
+    rim.intensity = 0.55;
+
+    // 4. HERO SPOTLIGHT — narrow warm cone aimed at the plateau center.
+    // Lifts the combatants out of the surrounding darkness without
+    // washing out the backdrop. Range tight so it doesn't leak into the
+    // back row props.
+    const heroSpot = new SpotLight(
+      'heroSpotCombat',
+      new Vector3(8, 22, 6),                  // above the plateau center
+      new Vector3(0, -1, 0),                  // straight down
+      Math.PI / 2.6,                          // ~70° cone
+      6,                                      // exponent — softer edges
+      this._scene
+    );
+    heroSpot.diffuse = new Color3(1.0, 0.92, 0.74);
+    heroSpot.specular = new Color3(0.6, 0.55, 0.42);
+    heroSpot.intensity = 1.2;
+    heroSpot.range = 28;
   }
 
   private setupPostProcessing(preset: CombatArtPreset): void {

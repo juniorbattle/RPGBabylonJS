@@ -125,8 +125,8 @@ export class SceneProps3DManager {
 
     private shadowRadiusFor(shape: PrimitiveShape): number {
         switch (shape) {
-            case 'tree-cone': return 1.8;
-            case 'tree-blob': return 2.4;
+            case 'tree-cone': return 1.3;
+            case 'tree-blob': return 1.6;
             case 'rock':      return 1.0;
             case 'bush':      return 0.8;
             case 'pillar':    return 0.7;
@@ -209,11 +209,11 @@ export class SceneProps3DManager {
     private buildTreeCone(id: string, tint: [number, number, number], dark: boolean): Mesh {
         const cone = MeshBuilder.CreateCylinder(id, {
             diameterTop: 0,
-            diameterBottom: 3.2,
-            height: 7.5,
+            diameterBottom: 2.4,
+            height: 5.5,
             tessellation: 10,
         }, this.scene);
-        cone.position.y = 7.5 / 2;
+        cone.position.y = 5.5 / 2;
         cone.material = this.mat(`${id}_mat`, tint, dark);
         return cone;
     }
@@ -226,22 +226,22 @@ export class SceneProps3DManager {
      */
     private buildTreeBlob(id: string, tint: [number, number, number], dark: boolean): Mesh {
         const foliage = MeshBuilder.CreateSphere(`${id}_foliage`, {
-            diameter: 5.5,
+            diameter: 3.6,
             segments: 10,
         }, this.scene);
-        foliage.scaling.y = 0.85;
-        foliage.position.y = 2.55;
+        foliage.scaling.y = 0.95;
+        foliage.position.y = 2.0;
         foliage.material = this.mat(`${id}_foliageMat`, tint, dark);
 
         // Tiny dark base : kept SHORT and stuffed INTO the foliage so no gap
         // can appear regardless of camera angle.
         const base = MeshBuilder.CreateCylinder(`${id}_base`, {
-            diameterTop: 1.6,
-            diameterBottom: 0.9,
-            height: 1.4,
+            diameterTop: 1.1,
+            diameterBottom: 0.7,
+            height: 1.1,
             tessellation: 10,
         }, this.scene);
-        base.position.y = 0.7;
+        base.position.y = 0.55;
         base.material = this.mat(`${id}_baseMat`, [tint[0] * 0.45, tint[1] * 0.45, tint[2] * 0.35], dark);
 
         const merged = Mesh.MergeMeshes([base, foliage], true, true, undefined, false, true);

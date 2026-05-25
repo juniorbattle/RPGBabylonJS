@@ -1,24 +1,31 @@
 /**
  * forestBiome.ts — Default scenery preset for the forest biome.
  *
- * Used by `CombatScene` whenever `map_<x>.json` does not provide a
- * `scenery` block. Acts both as a sane fallback and as the canonical
- * example of how to author a scenery preset.
+ * COMBAT SAFE ZONE — STRICT
+ * Default 8x6 tile grid, tileSize=2 → plateau spans world coords :
+ *   x ∈ [0..16]   z ∈ [0..12]
  *
- * Coordinate convention (assuming default 8x6 tile grid, tileSize=2 → mapW=16, mapD=12) :
+ * Props MUST NOT be placed inside x ∈ [-3..19], z ∈ [-3..15] (3-unit
+ * buffer all around). Anything inside this zone will collide with the
+ * combat grid, sprites and selection feedback.
  *
- *                       z = +25 ┬───────────────────────── deep background
- *                               │   tree-cone   tree-blob
- *                       z = +15 │ tree-blob       tree-blob
- *                               │
- *                       z = +12 ┌─── PLATEAU GAMEPLAY ──┐
- *                               │                       │
- *                       z =   0 └───────────────────────┘
- *                               │  foreground props
- *                       z =  -6 │ (depth = 'foreground')
+ *               z = +28 ──────────────── deep background
+ *                       ●  ●  ●  ●  ●  ●          (BACK)
+ *               z = +20
+ *                       ●            ●            (MID)
+ *               z = +15 ━━━━━━━━━━━━━━━━━━━━━━━━━ ← top buffer line
+ *               z = +12 ┌─────────────────────┐
+ *                       │                     │
+ *                       │  COMBAT PLATEAU     │   ←── SAFE ZONE
+ *                       │  [0..16, 0..12]     │       (no props)
+ *                       │                     │
+ *               z =  0  └─────────────────────┘
+ *               z = -3  ━━━━━━━━━━━━━━━━━━━━━━━━━ ← bottom buffer line
+ *                       ●  ●  ●  ●  ●  ●          (FOREGROUND)
+ *               z = -8
  *
- * X = 0   ──────────────────────────────────────────── X = +16
- *              plateau spans x ∈ [0..16] roughly.
+ *  x = -8   x = -3 │ SAFE │ x = 19   x = 24
+ *  side-L   buffer │      │ buffer   side-R
  */
 
 import type { Prop3DPlacement, SceneryConfig } from '../rendering/SceneryTypes';
@@ -28,54 +35,62 @@ import type { Prop3DPlacement, SceneryConfig } from '../rendering/SceneryTypes';
 /* -------------------------------------------------------------------------- */
 
 const forestProps: Prop3DPlacement[] = [
-    // ── Back row (z > mapD) : silhouette of distant forest ─────────────
-    { primitive: 'tree-cone', position: [-6, 0, 22], scale: 1.4, tint: [0.10, 0.22, 0.14], rotationY: 12 },
-    { primitive: 'tree-blob', position: [ 2, 0, 24], scale: 1.6, tint: [0.12, 0.26, 0.16], rotationY: -25 },
-    { primitive: 'tree-cone', position: [ 8, 0, 23], scale: 1.5, tint: [0.10, 0.20, 0.13], rotationY: 5 },
-    { primitive: 'tree-blob', position: [14, 0, 22], scale: 1.3, tint: [0.14, 0.28, 0.18], rotationY: 45 },
-    { primitive: 'tree-cone', position: [20, 0, 24], scale: 1.7, tint: [0.10, 0.22, 0.14], rotationY: -10 },
+    // ── DEEP BACK ROW (z = 24..28) : far silhouette layer ─────────────
+    { primitive: 'tree-cone', position: [-8, 0, 26], scale: 1.1, tint: [0.09, 0.20, 0.13], rotationY: 12 },
+    { primitive: 'tree-blob', position: [-2, 0, 27], scale: 1.0, tint: [0.10, 0.22, 0.14], rotationY: -25 },
+    { primitive: 'tree-cone', position: [ 5, 0, 28], scale: 1.2, tint: [0.08, 0.18, 0.11], rotationY: 5 },
+    { primitive: 'tree-blob', position: [11, 0, 27], scale: 0.9, tint: [0.12, 0.24, 0.15], rotationY: 45 },
+    { primitive: 'tree-cone', position: [17, 0, 28], scale: 1.3, tint: [0.09, 0.20, 0.13], rotationY: -10 },
+    { primitive: 'tree-blob', position: [23, 0, 26], scale: 1.0, tint: [0.10, 0.22, 0.14], rotationY: 60 },
 
-    // ── Mid row (around plateau back edge) : taller hero trees ────────
-    { primitive: 'tree-blob', position: [-4, 0, 16], scale: 1.2, tint: [0.18, 0.40, 0.22], rotationY: 0 },
-    { primitive: 'tree-cone', position: [18, 0, 15], scale: 1.4, tint: [0.16, 0.38, 0.22], rotationY: 30 },
-    { primitive: 'tree-blob', position: [22, 0, 18], scale: 1.0, tint: [0.20, 0.45, 0.24], rotationY: 90 },
+    // ── BACK ROW (z = 19..22) : medium silhouette layer ────────────────
+    { primitive: 'tree-cone', position: [-5, 0, 21], scale: 1.3, tint: [0.13, 0.30, 0.18], rotationY: 18 },
+    { primitive: 'tree-blob', position: [ 3, 0, 20], scale: 1.1, tint: [0.16, 0.34, 0.20], rotationY: -15 },
+    { primitive: 'tree-cone', position: [ 9, 0, 22], scale: 1.4, tint: [0.12, 0.28, 0.16], rotationY: 8 },
+    { primitive: 'tree-blob', position: [14, 0, 19], scale: 1.0, tint: [0.18, 0.36, 0.22], rotationY: 35 },
+    { primitive: 'tree-cone', position: [21, 0, 21], scale: 1.3, tint: [0.13, 0.30, 0.18], rotationY: -22 },
 
-    // ── Side flanks : framing trees just outside the plateau ──────────
-    { primitive: 'tree-cone', position: [-7, 0,  4], scale: 1.5, tint: [0.16, 0.35, 0.20], rotationY: 15, depth: 'foreground' },
-    { primitive: 'tree-blob', position: [-6, 0,  9], scale: 1.1, tint: [0.20, 0.42, 0.24], rotationY: -20 },
-    { primitive: 'tree-cone', position: [23, 0,  5], scale: 1.6, tint: [0.14, 0.32, 0.18], rotationY: -25, depth: 'foreground' },
-    { primitive: 'tree-blob', position: [22, 0, 10], scale: 1.2, tint: [0.18, 0.40, 0.22], rotationY: 60 },
+    // ── MID ROW (z = 16..18) : closer hero trees just past the buffer ─
+    { primitive: 'tree-blob', position: [-6, 0, 16], scale: 1.2, tint: [0.22, 0.46, 0.26], rotationY: 0 },
+    { primitive: 'tree-cone', position: [-3, 0, 18], scale: 1.5, tint: [0.18, 0.40, 0.22], rotationY: 25 },
+    { primitive: 'tree-blob', position: [20, 0, 16], scale: 1.1, tint: [0.24, 0.48, 0.28], rotationY: -30 },
+    { primitive: 'tree-cone', position: [23, 0, 18], scale: 1.4, tint: [0.18, 0.40, 0.22], rotationY: -8 },
 
-    // ── Foreground props : intimate framing close to camera ───────────
-    // Left cluster
-    { primitive: 'tree-blob',position: [-8, 0, -3], scale: 1.0, tint: [0.16, 0.34, 0.18], depth: 'foreground', rotationY: 20 },
-    { primitive: 'bush',     position: [-3, 0, -2], scale: 1.6, tint: [0.22, 0.50, 0.26], depth: 'foreground' },
-    { primitive: 'rock',     position: [-1, 0, -1], scale: 1.2, tint: [0.30, 0.32, 0.28], depth: 'foreground' },
-    { primitive: 'tree-blob',position: [-5, 0, -5], scale: 0.8, tint: [0.24, 0.48, 0.26], depth: 'foreground', rotationY: 30 },
-    { primitive: 'bush',     position: [-7, 0, -7], scale: 1.1, tint: [0.18, 0.42, 0.22], depth: 'foreground' },
-    // Center detail
-    { primitive: 'rock',     position: [ 2, 0, -3], scale: 1.4, tint: [0.32, 0.34, 0.30], depth: 'foreground' },
-    { primitive: 'bush',     position: [ 6, 0, -2], scale: 1.0, tint: [0.20, 0.45, 0.22], depth: 'foreground' },
-    // Right cluster
-    { primitive: 'bush',     position: [11, 0, -2], scale: 1.5, tint: [0.20, 0.46, 0.24], depth: 'foreground' },
-    { primitive: 'rock',     position: [14, 0, -1], scale: 1.1, tint: [0.30, 0.32, 0.30], depth: 'foreground' },
-    { primitive: 'tree-blob',position: [18, 0, -5], scale: 0.9, tint: [0.22, 0.46, 0.26], depth: 'foreground', rotationY: -40 },
-    { primitive: 'tree-blob',position: [22, 0, -3], scale: 1.0, tint: [0.16, 0.36, 0.20], depth: 'foreground', rotationY: -15 },
-    { primitive: 'bush',     position: [21, 0, -7], scale: 1.1, tint: [0.18, 0.40, 0.22], depth: 'foreground' },
+    // ── SIDE FLANKS LEFT (x = -8..-4, z = 3..11) ──────────────────────
+    { primitive: 'tree-cone', position: [-7, 0,  3], scale: 1.4, tint: [0.18, 0.38, 0.22], rotationY: 15 },
+    { primitive: 'tree-blob', position: [-5, 0,  7], scale: 1.0, tint: [0.24, 0.48, 0.28], rotationY: -20 },
+    { primitive: 'tree-cone', position: [-8, 0, 10], scale: 1.5, tint: [0.16, 0.36, 0.20], rotationY: 40 },
+    { primitive: 'bush',      position: [-4, 0,  5], scale: 1.0, tint: [0.28, 0.55, 0.32] },
+    { primitive: 'rock',      position: [-4, 0,  9], scale: 0.9, tint: [0.36, 0.38, 0.34] },
 
-    // ── Ground details around the plateau ─────────────────────────────
-    { primitive: 'rock', position: [ 0, 0,  4], scale: 0.7, tint: [0.32, 0.34, 0.30] },
-    { primitive: 'rock', position: [17, 0,  9], scale: 0.6, tint: [0.30, 0.32, 0.28] },
-    { primitive: 'bush', position: [-2, 0, 11], scale: 0.9, tint: [0.20, 0.42, 0.24] },
-    { primitive: 'bush', position: [20, 0,  2], scale: 1.0, tint: [0.22, 0.45, 0.26] },
+    // ── SIDE FLANKS RIGHT (x = 20..24, z = 3..11) ─────────────────────
+    { primitive: 'tree-cone', position: [22, 0,  3], scale: 1.5, tint: [0.16, 0.36, 0.20], rotationY: -25 },
+    { primitive: 'tree-blob', position: [21, 0,  8], scale: 1.1, tint: [0.22, 0.46, 0.26], rotationY: 60 },
+    { primitive: 'tree-cone', position: [24, 0, 11], scale: 1.4, tint: [0.18, 0.38, 0.22], rotationY: -10 },
+    { primitive: 'bush',      position: [20, 0,  5], scale: 1.1, tint: [0.28, 0.55, 0.32] },
+    { primitive: 'rock',      position: [21, 0, 11], scale: 0.8, tint: [0.36, 0.38, 0.34] },
+
+    // ── FOREGROUND LEFT (z = -3..-7, x ≤ -3) ──────────────────────────
+    { primitive: 'tree-blob', position: [-7, 0, -3], scale: 1.0, tint: [0.20, 0.42, 0.24], depth: 'foreground', rotationY: 20 },
+    { primitive: 'bush',      position: [-5, 0, -5], scale: 1.3, tint: [0.30, 0.58, 0.34], depth: 'foreground' },
+    { primitive: 'rock',      position: [-4, 0, -2], scale: 1.1, tint: [0.36, 0.38, 0.34], depth: 'foreground' },
+    { primitive: 'bush',      position: [-8, 0, -7], scale: 1.0, tint: [0.24, 0.50, 0.28], depth: 'foreground' },
+
+    // ── FOREGROUND RIGHT (z = -3..-7, x ≥ 19) ─────────────────────────
+    { primitive: 'tree-blob', position: [22, 0, -3], scale: 1.0, tint: [0.20, 0.42, 0.24], depth: 'foreground', rotationY: -15 },
+    { primitive: 'bush',      position: [20, 0, -5], scale: 1.4, tint: [0.30, 0.58, 0.34], depth: 'foreground' },
+    { primitive: 'rock',      position: [19, 0, -2], scale: 1.0, tint: [0.36, 0.38, 0.34], depth: 'foreground' },
+    { primitive: 'bush',      position: [24, 0, -6], scale: 1.1, tint: [0.24, 0.50, 0.28], depth: 'foreground' },
 ];
 
 export const forestSceneryPreset: SceneryConfig = {
     biome: 'forest',
     backdrop: {
+        // Magical teal-jade gradient. Brighter midtones to lift the scene
+        // out of the previous "black soup" look.
         gradient: {
-            top:    [0.025, 0.055, 0.060],   // deep teal night sky
-            bottom: [0.080, 0.190, 0.140],   // foggy forest floor
+            top:    [0.040, 0.090, 0.110],   // deep teal-jade night
+            bottom: [0.140, 0.280, 0.220],   // luminous forest mist
         },
         distance: 80,
         parallaxFactor: 0.12,
@@ -83,19 +98,22 @@ export const forestSceneryPreset: SceneryConfig = {
     },
     props: forestProps,
     postFX: {
-        vignetteIntensity: 0.45,
-        vignetteColor:     [0.01, 0.02, 0.02],
-        bloomThreshold:    0.85,
-        bloomWeight:       0.45,
+        // Stronger vignette frames the action, bloom boosted so the warm
+        // sun rim-light pops on the trees, exposure up to lift the global
+        // darkness, contrast up for HD-2D punch.
+        vignetteIntensity: 0.55,
+        vignetteColor:     [0.005, 0.015, 0.020],
+        bloomThreshold:    0.70,
+        bloomWeight:       0.55,
         grain:             4,
         toneMapping:       true,
-        exposure:          1.0,
-        contrast:          1.08,
+        exposure:          1.15,
+        contrast:          1.18,
     },
     ambient: {
-        color: [0.40, 1.00, 0.30],   // fireflies green
-        count: 24,
-        alpha: [0.10, 0.30],
+        color: [0.45, 1.00, 0.40],
+        count: 28,
+        alpha: [0.12, 0.34],
     },
 };
 
