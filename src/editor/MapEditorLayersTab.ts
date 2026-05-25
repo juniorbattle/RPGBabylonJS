@@ -573,6 +573,8 @@ export class MapEditorLayersTab {
             stageFit: raw.stageFit,
             compositionRole: raw.compositionRole,
             autoFit: raw.autoFit,
+            imageFit: raw.imageFit,
+            imageAspectRatio: raw.imageAspectRatio,
         };
     }
 
