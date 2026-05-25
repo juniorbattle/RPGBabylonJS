@@ -375,47 +375,49 @@ export class CombatScene {
    * disposes them in one sweep.
    */
   private setupLighting(preset: CombatArtPreset): void {
-    // 1. AMBIENT (boosted +60%) — keep details readable in shadows.
+    // 1. AMBIENT — kept low (×1.15) so shadows stay dramatic. The previous
+    // ×1.6 was crushing the contrast and making the scene read as flat.
     const amb = new HemisphericLight('ambCombat', new Vector3(0, 1, 0), this._scene);
     amb.diffuse = preset.ambient.diffuse;
     amb.groundColor = preset.ambient.ground;
-    amb.intensity = preset.ambient.intensity * 1.6;
+    amb.intensity = preset.ambient.intensity * 1.15;
 
-    // 2. SUN (boosted +40%) — warm directional key light.
+    // 2. SUN — warm directional key light. Boost upped to ×1.55 so the
+    // diffuse colour really lands and the bloom has something to bite into.
     const sun = new DirectionalLight('sunCombat', preset.sun.direction, this._scene);
     sun.diffuse = preset.sun.diffuse;
     sun.specular = preset.sun.specular;
-    sun.intensity = preset.sun.intensity * 1.4;
+    sun.intensity = preset.sun.intensity * 1.55;
     sun.position = preset.sun.position;
 
-    // 3. RIM-LIGHT — cool back-light. Direction = roughly opposite of
-    // the sun on the XZ plane so the back of every prop catches a faint
-    // blue edge highlight. Intensity intentionally subtle.
+    // 3. RIM-LIGHT — teal-magical back-light. Direction = roughly opposite
+    // of the sun on the XZ plane so the back of every prop / sprite catches
+    // a luminous teal edge. Saturated jade colour and bumped intensity for
+    // a more "moonlight through canopy" feel.
     const rim = new DirectionalLight(
       'rimCombat',
       new Vector3(0.4, -0.3, -1.0).normalize(),
       this._scene
     );
-    rim.diffuse = new Color3(0.32, 0.52, 0.78);
-    rim.specular = new Color3(0.2, 0.3, 0.5);
-    rim.intensity = 0.55;
+    rim.diffuse = new Color3(0.22, 0.62, 0.58);   // saturated jade
+    rim.specular = new Color3(0.14, 0.42, 0.40);
+    rim.intensity = 0.85;
 
-    // 4. HERO SPOTLIGHT — narrow warm cone aimed at the plateau center.
-    // Lifts the combatants out of the surrounding darkness without
-    // washing out the backdrop. Range tight so it doesn't leak into the
-    // back row props.
+    // 4. HERO SPOTLIGHT — tighter, hotter warm cone over the plateau. The
+    // previous 70° cone leaked all over the back row ; 55° keeps the spot
+    // pool right around the combatants for that JRPG "stage light" feel.
     const heroSpot = new SpotLight(
       'heroSpotCombat',
-      new Vector3(8, 22, 6),                  // above the plateau center
+      new Vector3(8, 26, 6),                  // above the plateau center, slightly higher
       new Vector3(0, -1, 0),                  // straight down
-      Math.PI / 2.6,                          // ~70° cone
-      6,                                      // exponent — softer edges
+      Math.PI / 3.2,                          // ~55° cone (was ~70°)
+      8,                                      // exponent up — sharper falloff
       this._scene
     );
-    heroSpot.diffuse = new Color3(1.0, 0.92, 0.74);
-    heroSpot.specular = new Color3(0.6, 0.55, 0.42);
-    heroSpot.intensity = 1.2;
-    heroSpot.range = 28;
+    heroSpot.diffuse = new Color3(1.0, 0.88, 0.66);    // warmer amber
+    heroSpot.specular = new Color3(0.55, 0.50, 0.38);
+    heroSpot.intensity = 1.55;                          // hotter pool
+    heroSpot.range = 32;
   }
 
   private setupPostProcessing(preset: CombatArtPreset): void {
@@ -637,65 +639,157 @@ export class CombatScene {
           console.log(`🌲 No custom mapFile specified. Spawning pure combat grid purely.`);
       }
 
-      // 4. AMBIENT PARTICLES (fireflies / dust motes) driven by scenery.ambient.
+      // 4. AMBIENT PARTICLES — two layers stacked for depth :
+      //    a) fireflies : larger billboards with organic figure-8 motion,
+      //       split between warm amber and cool teal for that JRPG magic
+      //       forest feel ;
+      //    b) dust motes : a denser cloud of tiny scintillating specks that
+      //       breathe their alpha to suggest atmosphere thickness.
       const ambient = sceneryConfig.ambient ?? { color: [0.4, 1, 0.2], count: 22, alpha: [0.08, 0.26] };
-      const dustCount = ambient.count;
-      const [pr, pg, pb] = ambient.color;
+      const fireflyCount = Math.max(12, Math.round(ambient.count * 0.55));
+      const dustCount    = Math.max(30, Math.round(ambient.count * 1.8));
       const [alphaMin, alphaMax] = ambient.alpha;
+
+      // -- Firefly glow texture : warm-white center fading through the
+      // biome ambient hue to a transparent rim. Used by both warm and cool
+      // fireflies — the per-mesh emissiveColor handles the actual tint.
       const fireflyTex = new DynamicTexture('combatFireflyGlowTex', { width: 64, height: 64 }, this._scene, false);
       fireflyTex.hasAlpha = true;
       const fireflyCtx = fireflyTex.getContext() as CanvasRenderingContext2D;
       fireflyCtx.clearRect(0, 0, 64, 64);
       const fireflyGradient = fireflyCtx.createRadialGradient(32, 32, 1, 32, 32, 30);
-      fireflyGradient.addColorStop(0, 'rgba(255,255,210,1)');
-      fireflyGradient.addColorStop(0.30, 'rgba(160,255,92,0.82)');
-      fireflyGradient.addColorStop(1, 'rgba(60,255,48,0)');
+      fireflyGradient.addColorStop(0.00, 'rgba(255,255,235,1.00)');
+      fireflyGradient.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+      fireflyGradient.addColorStop(1.00, 'rgba(255,255,255,0.00)');
       fireflyCtx.fillStyle = fireflyGradient;
       fireflyCtx.fillRect(0, 0, 64, 64);
       fireflyTex.update(false);
 
+      // -- Dust mote texture : a much softer point-glow without harsh
+      // centre so a hundred of them don't aggregate into bright blotches.
+      const dustTex = new DynamicTexture('combatDustMoteTex', { width: 32, height: 32 }, this._scene, false);
+      dustTex.hasAlpha = true;
+      const dustCtx = dustTex.getContext() as CanvasRenderingContext2D;
+      dustCtx.clearRect(0, 0, 32, 32);
+      const dustGradient = dustCtx.createRadialGradient(16, 16, 0.5, 16, 16, 14);
+      dustGradient.addColorStop(0.00, 'rgba(255,255,255,0.85)');
+      dustGradient.addColorStop(0.50, 'rgba(255,255,255,0.25)');
+      dustGradient.addColorStop(1.00, 'rgba(255,255,255,0.00)');
+      dustCtx.fillStyle = dustGradient;
+      dustCtx.fillRect(0, 0, 32, 32);
+      dustTex.update(false);
+
+      const WARM = new Color3(1.00, 0.82, 0.42);   // golden firefly
+      const COOL = new Color3(0.45, 0.95, 1.00);   // teal-ice magical mote
+
+      // --- Layer A : fireflies (organic figure-8 motion, mixed colours).
+      for (let i = 0; i < fireflyCount; i++) {
+          const isWarm = i % 2 === 0;
+          const moteSize = 0.10 + Math.random() * 0.14;
+          const fly = MeshBuilder.CreatePlane(`firefly_${i}`, { size: moteSize }, this._scene);
+          fly.isPickable = false;
+          fly.billboardMode = TransformNode.BILLBOARDMODE_ALL;
+          fly.renderingGroupId = 1;
+
+          const fMat = new StandardMaterial(`fireflyMat_${i}`, this._scene);
+          fMat.diffuseTexture = fireflyTex;
+          fMat.opacityTexture = fireflyTex;
+          fMat.useAlphaFromDiffuseTexture = true;
+          fMat.emissiveColor = isWarm ? WARM : COOL;
+          fMat.disableLighting = true;
+          fMat.disableDepthWrite = true;
+          fMat.backFaceCulling = false;
+          fMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+          fMat.alphaMode = 6;
+          fMat.alpha = alphaMin * 1.6 + Math.random() * (alphaMax - alphaMin);
+          fly.material = fMat;
+
+          const baseX = (Math.random() - 0.5) * (mapW + 22);
+          const baseY = baseSurfaceY + 1.2 + Math.random() * 3.6;
+          const baseZ = (Math.random() - 0.5) * (mapD + 22);
+          fly.position.set(baseX, baseY, baseZ);
+          fly.parent = sceneryRoot;
+
+          // Each firefly has its own phase + frequency triplet so the
+          // overall swarm never feels synchronised.
+          const meta = {
+              phaseX: Math.random() * Math.PI * 2,
+              phaseY: Math.random() * Math.PI * 2,
+              phaseZ: Math.random() * Math.PI * 2,
+              freqX: 0.30 + Math.random() * 0.35,
+              freqY: 0.45 + Math.random() * 0.45,
+              freqZ: 0.25 + Math.random() * 0.30,
+              ampX: 0.6 + Math.random() * 0.9,
+              ampY: 0.35 + Math.random() * 0.55,
+              ampZ: 0.5 + Math.random() * 0.8,
+          };
+
+          const flyObserver = this._scene.onBeforeRenderObservable.add(() => {
+              if (fly.isDisposed()) return;
+              const t = performance.now() * 0.001;
+              fly.position.x = baseX + Math.cos(t * meta.freqX + meta.phaseX) * meta.ampX;
+              fly.position.y = baseY + Math.sin(t * meta.freqY + meta.phaseY) * meta.ampY;
+              fly.position.z = baseZ + Math.sin(t * meta.freqZ + meta.phaseZ) * meta.ampZ;
+          });
+          this._sceneryObservers.push(flyObserver);
+      }
+
+      // --- Layer B : dust motes (tiny, dense, slow rise + alpha twinkle).
       for (let i = 0; i < dustCount; i++) {
-          const moteSize = 0.08 + Math.random() * 0.08;
+          const moteSize = 0.04 + Math.random() * 0.06;
           const mote = MeshBuilder.CreatePlane(`dust_${i}`, { size: moteSize }, this._scene);
           mote.isPickable = false;
-          mote.billboardMode = TransformNode.BILLBOARDMODE_ALL; // Billboad complet (7)
-          
-          const mMat = new StandardMaterial(`mMat_${i}`, this._scene);
-          mMat.diffuseTexture = fireflyTex;
-          mMat.opacityTexture = fireflyTex;
-          mMat.useAlphaFromDiffuseTexture = true;
-          mMat.emissiveColor = new Color3(pr, pg, pb);
-          mMat.disableLighting = true;
-          mMat.disableDepthWrite = true;
-          mMat.backFaceCulling = false;
-          mMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
-          mMat.alphaMode = 6;
-          mMat.alpha = alphaMin + Math.random() * (alphaMax - alphaMin);
-          mote.material = mMat;
+          mote.billboardMode = TransformNode.BILLBOARDMODE_ALL;
           mote.renderingGroupId = 1;
-          
-          mote.position = new Vector3(
-              (Math.random() - 0.5) * (mapW + 20),
-              baseSurfaceY + 0.2 + Math.random() * 4.0, 
-              (Math.random() - 0.5) * (mapD + 20)
+
+          const dMat = new StandardMaterial(`dustMat_${i}`, this._scene);
+          dMat.diffuseTexture = dustTex;
+          dMat.opacityTexture = dustTex;
+          dMat.useAlphaFromDiffuseTexture = true;
+          // Mostly white with a faint warm/cool drift for variety.
+          dMat.emissiveColor = i % 3 === 0
+              ? new Color3(0.95, 0.90, 0.75)
+              : i % 3 === 1
+                  ? new Color3(0.75, 0.95, 0.95)
+                  : new Color3(1.00, 1.00, 1.00);
+          dMat.disableLighting = true;
+          dMat.disableDepthWrite = true;
+          dMat.backFaceCulling = false;
+          dMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+          dMat.alphaMode = 6;
+          const baseAlpha = alphaMin * 0.6 + Math.random() * (alphaMax * 0.6);
+          dMat.alpha = baseAlpha;
+          mote.material = dMat;
+
+          mote.position.set(
+              (Math.random() - 0.5) * (mapW + 24),
+              baseSurfaceY + 0.2 + Math.random() * 4.4,
+              (Math.random() - 0.5) * (mapD + 24),
           );
-          
-          mote.metadata = {
-              speedY: 0.002 + Math.random() * 0.006,
-              speedX: (Math.random() - 0.5) * 0.015,
-              startY: mote.position.y
-          };
-          
           mote.parent = sceneryRoot;
-          
+
+          const meta = {
+              speedY:     0.0015 + Math.random() * 0.004,
+              driftX:     (Math.random() - 0.5) * 0.008,
+              twinklePhase: Math.random() * Math.PI * 2,
+              twinkleFreq:  1.2 + Math.random() * 1.8,
+              twinkleAmp:   baseAlpha * 0.55,
+              baseAlpha,
+              ceilingY:   baseSurfaceY + 5.0,
+              floorY:     baseSurfaceY + 0.1,
+          };
+
           const dustObserver = this._scene.onBeforeRenderObservable.add(() => {
               if (mote.isDisposed()) return;
-              mote.position.y += mote.metadata.speedY;
-              mote.position.x += mote.metadata.speedX + Math.sin(Date.now() * 0.001 + i) * 0.01;
-              
-              if (mote.position.y > (baseSurfaceY + 5.0)) {
-                  mote.position.y = baseSurfaceY + 0.1; // Reset en bas
-              }
+              const t = performance.now() * 0.001;
+              mote.position.y += meta.speedY;
+              mote.position.x += meta.driftX + Math.sin(t + i) * 0.004;
+              if (mote.position.y > meta.ceilingY) mote.position.y = meta.floorY;
+              // Twinkle : modulate alpha around its base value.
+              dMat.alpha = Math.max(
+                  0,
+                  meta.baseAlpha + Math.sin(t * meta.twinkleFreq + meta.twinklePhase) * meta.twinkleAmp,
+              );
           });
           this._sceneryObservers.push(dustObserver);
       }
@@ -760,11 +854,14 @@ export class CombatScene {
       this._postFX = new ScenePostFX(this._scene, this._camera.babylonCamera);
       this._postFX.setup(this._activeScenery.postFX, this._renderingPipeline ?? undefined);
 
-      // Exponential teal fog : reads as aerial perspective on back-row props.
-      // Density is intentionally low so the plateau and sprites stay crisp.
+      // Exponential jade fog : reads as real aerial perspective on the back
+      // half of the scene without crushing the plateau. Colour pulled down
+      // to a deeper teal so the silhouettes of back-row meshes desaturate
+      // into the backdrop instead of floating on it. Density bumped from
+      // 0.012 → 0.016 to actually feel the haze at combat distance.
       this._scene.fogMode = Scene.FOGMODE_EXP2;
-      this._scene.fogColor = new Color3(0.06, 0.13, 0.10);
-      this._scene.fogDensity = 0.012;
+      this._scene.fogColor = new Color3(0.035, 0.095, 0.075);
+      this._scene.fogDensity = 0.016;
 
       // God rays : five oblique shafts of light coming down-right, parented
       // to the scenery root so endCombat sweeps them away. Skipped when a
@@ -780,10 +877,12 @@ export class CombatScene {
 
   /**
    * Creates a handful of additive translucent planes faking volumetric
-   * "shafts of light" cutting through the forest canopy. Each shaft is a
-   * tall, narrow, semi-transparent plane tilted along the sun direction.
-   * Pure post-FX bloom on the warm tint sells the volumetric illusion at
-   * zero shader cost.
+   * "shafts of light" cutting through the forest canopy. Each shaft uses a
+   * procedural texture with a vertical gradient (opaque at the top, fading
+   * to transparent at the bottom) plus soft horizontal edges so the planes
+   * read as real beams rather than rectangular billboards. The warm tint
+   * gets picked up by post-FX bloom for the volumetric illusion at zero
+   * shader cost.
    */
   private buildGodRays(): void {
       if (!this._currentSceneryRoot) return;
@@ -791,27 +890,29 @@ export class CombatScene {
       const root = new TransformNode('godRaysRoot', this._scene);
       root.parent = this._currentSceneryRoot;
 
+      const beamTex = this.createGodRayTexture();
       const mat = new StandardMaterial('godRayMat', this._scene);
+      mat.diffuseTexture = beamTex;
+      mat.opacityTexture = beamTex;
+      mat.useAlphaFromDiffuseTexture = true;
+      mat.emissiveColor = new Color3(0.95, 0.78, 0.45);   // warm amber, less saturated
       mat.diffuseColor = new Color3(0, 0, 0);
-      mat.emissiveColor = new Color3(1.0, 0.85, 0.55);
       mat.specularColor = new Color3(0, 0, 0);
       mat.disableLighting = true;
       mat.backFaceCulling = false;
-      mat.alpha = 0.14;
-      mat.alphaMode = 1; // ADD blend mode -> brightens whatever is behind.
+      mat.alphaMode = 1;                                   // ADD blend
       mat.disableDepthWrite = true;
       mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
 
-      // Five shafts spanning the plateau width, positioned in front of the
-      // mid-back tree row (z = 13) so they actually cross the visible
-      // playfield. Tall (32 units) and stronger alpha so they read clearly
-      // against both the backdrop and the props.
+      // Five shafts spanning the plateau width. More variation in width and
+      // softer alphas now that the texture itself fades, so the silhouettes
+      // are slimmer light beams instead of solid pillars.
       const shafts: Array<{ x: number; z: number; w: number; tilt: number; alpha: number }> = [
-          { x:  0, z: 13, w: 1.8, tilt:  5, alpha: 0.32 },
-          { x:  5, z: 14, w: 1.2, tilt: -3, alpha: 0.26 },
-          { x:  9, z: 13, w: 2.0, tilt:  6, alpha: 0.38 },
-          { x: 13, z: 14, w: 1.2, tilt: -4, alpha: 0.24 },
-          { x: 17, z: 13, w: 1.6, tilt:  4, alpha: 0.30 },
+          { x:  0, z: 13, w: 1.4, tilt:  5, alpha: 0.18 },
+          { x:  5, z: 14, w: 0.9, tilt: -3, alpha: 0.14 },
+          { x:  9, z: 13, w: 1.6, tilt:  6, alpha: 0.22 },
+          { x: 13, z: 14, w: 0.9, tilt: -4, alpha: 0.13 },
+          { x: 17, z: 13, w: 1.2, tilt:  4, alpha: 0.17 },
       ];
 
       shafts.forEach((s, i) => {
@@ -825,9 +926,9 @@ export class CombatScene {
           // so the shafts spread visually instead of all facing the camera
           // flat.
           plane.rotation.set(
-              (12 * Math.PI) / 180,           // pitch slightly forward
-              ((i % 2 === 0 ? 16 : -16) * Math.PI) / 180,  // alternating yaw for variety
-              (s.tilt * Math.PI) / 180,       // roll
+              (12 * Math.PI) / 180,                          // pitch slightly forward
+              ((i % 2 === 0 ? 16 : -16) * Math.PI) / 180,    // alternating yaw for variety
+              (s.tilt * Math.PI) / 180,                      // roll
           );
           plane.isPickable = false;
           plane.renderingGroupId = 0;
@@ -835,6 +936,44 @@ export class CombatScene {
       });
 
       mat.dispose();  // base mat is no longer needed (we cloned per-shaft).
+  }
+
+  /**
+   * Builds a one-shot procedural texture for the god-ray quads : opaque
+   * white at the top, fading to fully transparent at the bottom, with
+   * softened horizontal edges so the plane silhouettes do not show as
+   * sharp rectangles. Tinted at draw time via material.emissiveColor.
+   */
+  private createGodRayTexture(): DynamicTexture {
+      const tex = new DynamicTexture('godRayBeamTex', { width: 64, height: 256 }, this._scene, false);
+      tex.hasAlpha = true;
+      const ctx = tex.getContext() as CanvasRenderingContext2D;
+      ctx.clearRect(0, 0, 64, 256);
+
+      // Vertical body : strong opacity at the top, fade to zero at the
+      // bottom. Multiple stops give a non-linear "shaft" feel.
+      const vGrad = ctx.createLinearGradient(0, 0, 0, 256);
+      vGrad.addColorStop(0.00, 'rgba(255,255,255,0.92)');
+      vGrad.addColorStop(0.30, 'rgba(255,255,255,0.55)');
+      vGrad.addColorStop(0.65, 'rgba(255,255,255,0.20)');
+      vGrad.addColorStop(1.00, 'rgba(255,255,255,0.00)');
+      ctx.fillStyle = vGrad;
+      ctx.fillRect(0, 0, 64, 256);
+
+      // Horizontal soft-edge mask : multiply the body by a centre-bright
+      // radial-ish gradient so the side edges fade out cleanly.
+      const hGrad = ctx.createLinearGradient(0, 0, 64, 0);
+      hGrad.addColorStop(0.00, 'rgba(0,0,0,1.00)');
+      hGrad.addColorStop(0.20, 'rgba(0,0,0,0.00)');
+      hGrad.addColorStop(0.80, 'rgba(0,0,0,0.00)');
+      hGrad.addColorStop(1.00, 'rgba(0,0,0,1.00)');
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = hGrad;
+      ctx.fillRect(0, 0, 64, 256);
+      ctx.globalCompositeOperation = 'source-over';
+
+      tex.update(false);
+      return tex;
   }
 
   private buildStageGroundAccent(
