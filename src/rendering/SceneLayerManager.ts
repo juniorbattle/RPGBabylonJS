@@ -22,6 +22,7 @@ import {
     SceneLayerStack,
 } from './SceneLayerTypes';
 import { SCENE_LAYER_PRESETS } from '../biomes/magicalForestLayers';
+import { computeStageGeometry, RoleStageBox, StageGeometry } from './StageGeometry';
 
 interface ManagedLayer {
     id: string;
@@ -199,6 +200,7 @@ export class SceneLayerManager {
         const base = SCENE_LAYER_PRESETS[biome] ?? SCENE_LAYER_PRESETS.forest;
         this.preset = this.resolvePreset(base, input, biome);
         this.ensureSkyVoidFill();
+        this.applyStageGeometry();
         this.applyAutoFit();
         this.validateLayerStack();
         this.mode = mode;
@@ -237,6 +239,41 @@ export class SceneLayerManager {
         if (this.parallaxObserver) {
             this.scene.onBeforeRenderObservable.remove(this.parallaxObserver);
             this.parallaxObserver = null;
+        }
+    }
+
+    /**
+     * Overrides per-layer geometry (widthScale / height / yOffset / zOffset)
+     * with the values computed by `computeStageGeometry()` for every known
+     * composition role. This makes the diorama framing deterministic and
+     * independent of which PNG ends up in each role; the image then fits
+     * into the imposed geometry via `imageFit`.
+     *
+     * Layers that:
+     *   - have no `compositionRole`,
+     *   - have a role not covered by StageGeometry (e.g. 'groundBlend' is
+     *     handled later by applyAutoFit),
+     *   - or set `useStageGeometry: false` (future opt-out)
+     * keep their JSON-provided geometry.
+     *
+     * Conversion contract (cf. computePosition / buildLayer):
+     *   planeW  = mapW * widthScale       => widthScale = box.width  / mapW
+     *   planeH  = height                  => height     = box.height
+     *   center  = baseSurfaceY + yOffset + planeH/2
+     *                                     => yOffset    = box.yCenter - baseSurfaceY - height/2
+     *   posZ    = mapD/2 + zOffset        => zOffset    = box.zOffset
+     */
+    private applyStageGeometry(): void {
+        const geom: StageGeometry = computeStageGeometry(this.mapW, this.mapD, this.baseSurfaceY);
+        for (const layer of this.preset.layers) {
+            const role = layer.compositionRole;
+            if (!role) continue;
+            const box: RoleStageBox | undefined = geom[role];
+            if (!box) continue; // groundBlend & unknown roles untouched
+            layer.widthScale = box.width / Math.max(1, this.mapW);
+            layer.height = box.height;
+            layer.yOffset = box.yCenter - this.baseSurfaceY - box.height / 2;
+            layer.zOffset = box.zOffset;
         }
     }
 
