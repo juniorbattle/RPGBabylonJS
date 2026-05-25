@@ -13,7 +13,7 @@
     "groundSeed": 1
   },
   "groundLayer": {
-    "enabled": true,
+    "enabled": false,
     "mode": "color",
     "textureFile": null,
     "color": "#0e1a14",

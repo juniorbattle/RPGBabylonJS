@@ -564,64 +564,73 @@ export class CombatScene {
           : defaultScenery;
       this._activeScenery = sceneryConfig;
 
-      // 1. GROUND (combat plateau base) — kept as a flat textured ground centered on the plateau.
+      // 1. GROUND (combat plateau surrounding plane) — optional. When the
+      // map's `groundLayer.enabled` is false (or the section is omitted), no
+      // surrounding plane is created at all : the combat plateau floats on
+      // the backdrop ambiance. This is the canonical diorama-theater look.
+      // Set `enabled: true` in `groundLayer` to bring it back (useful for
+      // dioramas that need a soft tile under their feet).
       const groundLayer = mapData?.groundLayer;
-      const baseW = mapW * (groundLayer?.widthScale ?? 8);
-      const baseD = mapD * (groundLayer?.depthScale ?? 8);
-      const terrainPlane = MeshBuilder.CreateGround("terrainBase", { width: baseW, height: baseD }, this._scene);
-      terrainPlane.position.x = groundLayer?.xOffset ?? 0;
-      terrainPlane.position.y = baseSurfaceY + (groundLayer?.elevationOffset ?? 0);
-      terrainPlane.position.z = mapD / 2 + (groundLayer?.zOffset ?? 0);
-      terrainPlane.isPickable = false;
-      terrainPlane.setEnabled(groundLayer?.enabled !== false);
-
-      const terMat = new StandardMaterial("terrainMat", this._scene);
-
-      if (groundLayer?.mode === 'texture' && groundLayer.textureFile) {
-          const groundTex = new Texture(`/assets/backgrounds/${groundLayer.textureFile}`, this._scene, false, true, Texture.TRILINEAR_SAMPLINGMODE);
-          groundTex.wrapU = Texture.WRAP_ADDRESSMODE;
-          groundTex.wrapV = Texture.WRAP_ADDRESSMODE;
-          groundTex.uScale = groundLayer.repeatX ?? 8;
-          groundTex.vScale = groundLayer.repeatY ?? 8;
-          groundTex.hasAlpha = true;
-          terMat.diffuseTexture = groundTex;
-          terMat.useAlphaFromDiffuseTexture = true;
-          terMat.diffuseColor = Color3.White();
-          terMat.emissiveColor = new Color3(0.08, 0.10, 0.07);
-          terMat.alpha = groundLayer.opacity ?? 1;
-      } else if (groundLayer?.mode === 'color') {
-          const groundColor = Color3.FromHexString(groundLayer.color ?? '#163018');
-          terMat.diffuseColor = groundColor;
-          terMat.emissiveColor = groundColor.scale(0.18);
-          terMat.alpha = groundLayer.opacity ?? 1;
-      } else {
-          terMat.diffuseColor = preset.terrainTint;
-          const groundTex = await this.createProceduralGroundTexture(
-              biome,
-              mapData?.proceduralMeta?.groundSeed ?? 1,
-              preset.floor
-          );
-          groundTex.uScale = groundLayer?.repeatX ?? 8;
-          groundTex.vScale = groundLayer?.repeatY ?? 8;
-          terMat.diffuseTexture = groundTex;
-          terMat.emissiveColor = preset.terrainEmissive;
-          terMat.alpha = groundLayer?.opacity ?? 1;
-      }
-      terMat.specularColor = new Color3(0, 0, 0);
-      if (terMat.alpha < 1) {
-          terMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
-          terMat.disableDepthWrite = true;
-      }
-      terrainPlane.material = terMat;
-      terrainPlane.parent = sceneryRoot;
-
-      // Stage ground accent : soft grass disc that blends the plateau into
-      // the decor. Skipped when a diorama is active (it authors its own
-      // ground), unless explicitly kept via `diorama.keepStageGroundAccent`.
+      const groundEnabled = groundLayer?.enabled === true;
       const dioramaCfg = sceneryConfig.diorama;
       const dioramaActiveForGround = !!dioramaCfg && dioramaCfg.enabled !== false;
-      if (!dioramaActiveForGround || dioramaCfg!.keepStageGroundAccent) {
-          this.buildStageGroundAccent(sceneryRoot, mapW, mapD, baseSurfaceY, preset);
+
+      if (groundEnabled) {
+          const baseW = mapW * (groundLayer.widthScale ?? 8);
+          const baseD = mapD * (groundLayer.depthScale ?? 8);
+          const terrainPlane = MeshBuilder.CreateGround("terrainBase", { width: baseW, height: baseD }, this._scene);
+          terrainPlane.position.x = groundLayer.xOffset ?? 0;
+          terrainPlane.position.y = baseSurfaceY + (groundLayer.elevationOffset ?? 0);
+          terrainPlane.position.z = mapD / 2 + (groundLayer.zOffset ?? 0);
+          terrainPlane.isPickable = false;
+
+          const terMat = new StandardMaterial("terrainMat", this._scene);
+
+          if (groundLayer.mode === 'texture' && groundLayer.textureFile) {
+              const groundTex = new Texture(`/assets/backgrounds/${groundLayer.textureFile}`, this._scene, false, true, Texture.TRILINEAR_SAMPLINGMODE);
+              groundTex.wrapU = Texture.WRAP_ADDRESSMODE;
+              groundTex.wrapV = Texture.WRAP_ADDRESSMODE;
+              groundTex.uScale = groundLayer.repeatX ?? 8;
+              groundTex.vScale = groundLayer.repeatY ?? 8;
+              groundTex.hasAlpha = true;
+              terMat.diffuseTexture = groundTex;
+              terMat.useAlphaFromDiffuseTexture = true;
+              terMat.diffuseColor = Color3.White();
+              terMat.emissiveColor = new Color3(0.08, 0.10, 0.07);
+              terMat.alpha = groundLayer.opacity ?? 1;
+          } else if (groundLayer.mode === 'color') {
+              const groundColor = Color3.FromHexString(groundLayer.color ?? '#163018');
+              terMat.diffuseColor = groundColor;
+              terMat.emissiveColor = groundColor.scale(0.18);
+              terMat.alpha = groundLayer.opacity ?? 1;
+          } else {
+              terMat.diffuseColor = preset.terrainTint;
+              const groundTex = await this.createProceduralGroundTexture(
+                  biome,
+                  mapData?.proceduralMeta?.groundSeed ?? 1,
+                  preset.floor
+              );
+              groundTex.uScale = groundLayer.repeatX ?? 8;
+              groundTex.vScale = groundLayer.repeatY ?? 8;
+              terMat.diffuseTexture = groundTex;
+              terMat.emissiveColor = preset.terrainEmissive;
+              terMat.alpha = groundLayer.opacity ?? 1;
+          }
+          terMat.specularColor = new Color3(0, 0, 0);
+          if (terMat.alpha < 1) {
+              terMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+              terMat.disableDepthWrite = true;
+          }
+          terrainPlane.material = terMat;
+          terrainPlane.parent = sceneryRoot;
+
+          // Stage ground accent : soft grass disc that blends the plateau
+          // into the surrounding terrain. Only meaningful when there *is*
+          // a surrounding terrain, AND we don't have a diorama supplying
+          // its own ground. Skipped completely if either is missing.
+          if (!dioramaActiveForGround || dioramaCfg!.keepStageGroundAccent) {
+              this.buildStageGroundAccent(sceneryRoot, mapW, mapD, baseSurfaceY, preset);
+          }
       }
 
       // 2. DIORAMA SCENERY : single-plane backdrop + 3D props.

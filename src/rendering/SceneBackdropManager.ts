@@ -206,28 +206,72 @@ export class SceneBackdropManager {
         const [br, bg, bb] = this.config.gradient.bottom;
         const topRGB = `rgb(${(tr * 255) | 0}, ${(tg * 255) | 0}, ${(tb * 255) | 0})`;
         const botRGB = `rgb(${(br * 255) | 0}, ${(bg * 255) | 0}, ${(bb * 255) | 0})`;
+        // Tertiary "horizon glow" colour : a lifted, slightly warmer interpolation
+        // of top + bottom so the sky reads as deeper at the zenith and brighter
+        // where it meets the tree line.
+        const horR = Math.min(255, ((tr + br) * 0.5 * 255 + 18) | 0);
+        const horG = Math.min(255, ((tg + bg) * 0.5 * 255 + 28) | 0);
+        const horB = Math.min(255, ((tb + bb) * 0.5 * 255 + 16) | 0);
+        const horizonRGB = `rgb(${horR}, ${horG}, ${horB})`;
 
-        // 1. Base vertical gradient.
+        // 1. Base vertical gradient : zenith dark → horizon lifted → ground.
         const sky = ctx.createLinearGradient(0, 0, 0, H);
         sky.addColorStop(0.00, topRGB);
-        sky.addColorStop(0.55, botRGB);
+        sky.addColorStop(0.40, topRGB);
+        sky.addColorStop(0.62, horizonRGB);
         sky.addColorStop(1.00, botRGB);
         ctx.fillStyle = sky;
         ctx.fillRect(0, 0, W, H);
 
-        // 2. Moonlight halo : pushed far into the UPPER-RIGHT corner so it
-        //    never sits behind the combat plateau. Much lower opacity so it
-        //    reads as a hint of off-screen light, not a yellow blob.
+        // 2a. Central moonlight halo : a soft, large radial glow dead-center
+        //     high in the frame. This is the new focal hero light source.
+        const haloX = W * 0.50;
+        const haloY = H * 0.18;
+        const halo = ctx.createRadialGradient(haloX, haloY, 20, haloX, haloY, H * 0.65);
+        halo.addColorStop(0.00, 'rgba(220, 220, 200, 0.22)');
+        halo.addColorStop(0.20, 'rgba(180, 210, 200, 0.13)');
+        halo.addColorStop(0.55, 'rgba(120, 180, 180, 0.05)');
+        halo.addColorStop(1.00, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = halo;
+        ctx.fillRect(0, 0, W, H);
+
+        // 2b. Off-screen rim hint : preserved upper-right small halo so the
+        //     scene still feels like it has a directional sun outside the
+        //     frame, not just a centered moon.
         const moonX = W * 0.88;
         const moonY = H * 0.10;
-        const moon = ctx.createRadialGradient(moonX, moonY, 10, moonX, moonY, H * 0.55);
-        moon.addColorStop(0.0, 'rgba(220, 200, 180, 0.18)');
-        moon.addColorStop(0.4, 'rgba(180, 200, 190, 0.06)');
+        const moon = ctx.createRadialGradient(moonX, moonY, 8, moonX, moonY, H * 0.40);
+        moon.addColorStop(0.0, 'rgba(220, 200, 170, 0.14)');
         moon.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = moon;
         ctx.fillRect(0, 0, W, H);
 
-        // 3. Horizontal fog bands (subtle aerial perspective).
+        // 3. Aurora streak : two diagonal soft colour bands across the upper
+        //    half. One mauve, one teal, both very low opacity so they read
+        //    as magical atmosphere rather than literal aurora ribbons.
+        ctx.save();
+        ctx.translate(W * 0.5, H * 0.30);
+        ctx.rotate(-0.12);
+        const aurora1 = ctx.createLinearGradient(-W * 0.6, -40, W * 0.6, 40);
+        aurora1.addColorStop(0.0, 'rgba(110,  80, 180, 0.00)');
+        aurora1.addColorStop(0.5, 'rgba(160, 110, 220, 0.10)');
+        aurora1.addColorStop(1.0, 'rgba(110,  80, 180, 0.00)');
+        ctx.fillStyle = aurora1;
+        ctx.fillRect(-W * 0.6, -40, W * 1.2, 80);
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(W * 0.5, H * 0.42);
+        ctx.rotate(0.08);
+        const aurora2 = ctx.createLinearGradient(-W * 0.6, -25, W * 0.6, 25);
+        aurora2.addColorStop(0.0, 'rgba( 60, 200, 200, 0.00)');
+        aurora2.addColorStop(0.5, 'rgba(110, 240, 230, 0.09)');
+        aurora2.addColorStop(1.0, 'rgba( 60, 200, 200, 0.00)');
+        ctx.fillStyle = aurora2;
+        ctx.fillRect(-W * 0.6, -25, W * 1.2, 50);
+        ctx.restore();
+
+        // 4. Horizontal fog bands (aerial perspective on the back row).
         for (let i = 0; i < 6; i++) {
             const y = H * (0.50 + i * 0.07);
             const band = ctx.createLinearGradient(0, y - 30, 0, y + 30);
@@ -238,7 +282,8 @@ export class SceneBackdropManager {
             ctx.fillRect(0, y - 30, W, 60);
         }
 
-        // 4. Procedural tree silhouettes — three depth layers.
+        // 5. Procedural tree silhouettes — three depth layers with branching
+        //    forks instead of plain triangles, for a more organic horizon.
         const rng = this.seededRng(20260524);
         const drawSilhouetteRow = (
             row: number,
@@ -249,24 +294,34 @@ export class SceneBackdropManager {
             tintFactor: number,
         ) => {
             const baseline = H * (0.62 + row * 0.08);
-            const darkR = ((tr * 255) | 0) * tintFactor | 0;
-            const darkG = ((tg * 255) | 0) * tintFactor | 0;
-            const darkB = ((tb * 255) | 0) * tintFactor | 0;
+            const darkR = (((tr * 255) | 0) * tintFactor) | 0;
+            const darkG = (((tg * 255) | 0) * tintFactor) | 0;
+            const darkB = (((tb * 255) | 0) * tintFactor) | 0;
             ctx.fillStyle = `rgba(${darkR}, ${darkG}, ${darkB}, ${opacity})`;
             for (let i = 0; i < count; i++) {
                 const cx = (i + rng() * 0.8) * (W / count);
                 const treeH = baseHeight + rng() * heightVariance;
-                const treeW = treeH * (0.35 + rng() * 0.25);
-                // Triangle-with-rounded-top silhouette.
+                const treeW = treeH * (0.32 + rng() * 0.28);
+                const lean = (rng() - 0.5) * 0.15;
+                // Main trunk + canopy : irregular pentagon for a hand-drawn feel.
                 ctx.beginPath();
                 ctx.moveTo(cx - treeW / 2, baseline);
-                ctx.lineTo(cx - treeW * 0.25, baseline - treeH * 0.6);
-                ctx.lineTo(cx, baseline - treeH);
-                ctx.lineTo(cx + treeW * 0.25, baseline - treeH * 0.6);
+                ctx.lineTo(cx - treeW * (0.30 + lean), baseline - treeH * (0.55 + rng() * 0.10));
+                ctx.lineTo(cx + lean * treeH, baseline - treeH);
+                ctx.lineTo(cx + treeW * (0.30 - lean), baseline - treeH * (0.55 + rng() * 0.10));
                 ctx.lineTo(cx + treeW / 2, baseline);
                 ctx.closePath();
                 ctx.fill();
-                // Small "trunk" base.
+                // Side branch puff (only on larger trees, ~half the row).
+                if (rng() > 0.5 && row > 0) {
+                    const bx = cx + (rng() > 0.5 ? 1 : -1) * treeW * 0.4;
+                    const by = baseline - treeH * (0.55 + rng() * 0.15);
+                    const br_ = treeW * (0.22 + rng() * 0.12);
+                    ctx.beginPath();
+                    ctx.arc(bx, by, br_, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                // Trunk base.
                 ctx.fillRect(cx - treeW * 0.04, baseline - 4, treeW * 0.08, 8);
             }
         };
@@ -277,7 +332,7 @@ export class SceneBackdropManager {
         // Front layer : tall, dark, defines the horizon line of the backdrop.
         drawSilhouetteRow(2, 12, 180, 110, 0.88, 0.15);
 
-        // 5. Ground haze : strong horizontal band at the very bottom blending
+        // 6. Ground haze : strong horizontal band at the very bottom blending
         //    the backdrop colour into the combat plateau colour.
         const haze = ctx.createLinearGradient(0, H * 0.78, 0, H);
         haze.addColorStop(0, 'rgba(0, 0, 0, 0)');
@@ -285,7 +340,19 @@ export class SceneBackdropManager {
         ctx.fillStyle = haze;
         ctx.fillRect(0, H * 0.78, W, H * 0.22);
 
-        // 6. Subtle pollen / dust speckles to break the flat gradient.
+        // 7. Stars : a small set of crisp pinpoints in the upper half. They
+        //    sit on top of the larger pollen dust below.
+        ctx.fillStyle = 'rgba(255, 250, 220, 0.85)';
+        for (let i = 0; i < 60; i++) {
+            const x = rng() * W;
+            const y = rng() * H * 0.42;
+            const r = 0.4 + rng() * 0.8;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // 8. Pollen / dust speckles to break the flat gradient.
         ctx.fillStyle = 'rgba(255, 245, 200, 0.06)';
         for (let i = 0; i < 220; i++) {
             const x = rng() * W;
@@ -295,6 +362,15 @@ export class SceneBackdropManager {
             ctx.arc(x, y, r, 0, Math.PI * 2);
             ctx.fill();
         }
+
+        // 9. Corner vignette : darken the four corners for a cinematic
+        //    framing. Subtle so it complements the post-FX vignette without
+        //    doubling up too obviously.
+        const corner = ctx.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 0.72);
+        corner.addColorStop(0.0, 'rgba(0, 0, 0, 0.00)');
+        corner.addColorStop(1.0, 'rgba(0, 0, 0, 0.32)');
+        ctx.fillStyle = corner;
+        ctx.fillRect(0, 0, W, H);
 
         tex.update(false);
         tex.hasAlpha = false;
