@@ -172,6 +172,45 @@ export interface ScenePostFXConfig {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Diorama (single .glb mega-prop)                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A pre-modelled environment chunk loaded from a single `.glb` file, usually
+ * produced via :
+ *   - Tripo3D AI image-to-3D (takes an isometric concept art image)
+ *   - Blender export
+ *   - Any other DCC that ships glTF / glb
+ *
+ * The diorama is placed behind / around the combat plateau as a static decor.
+ * It complements (or fully replaces) the procedural props in
+ * `SceneryConfig.props` — when you have a quality diorama, you'll typically
+ * empty the `props` array.
+ */
+export interface DioramaConfig {
+    /** Filename relative to `public/assets/dioramas/`. */
+    file: string;
+    /**
+     * World position of the diorama root. Conventionally the diorama is
+     * authored with its visual centre on local origin so this anchor matches
+     * the centre of the combat plateau (default `[8, 0, 6]`).
+     */
+    position?: [number, number, number];
+    /** Y-axis rotation in degrees. Default `0`. */
+    rotationY?: number;
+    /** Uniform scale multiplier. Default `1`. */
+    scale?: number;
+    /** If `false`, the diorama is loaded but hidden. Default `true`. */
+    enabled?: boolean;
+    /**
+     * If `true` (default), the diorama receives scene lighting (sun + rim +
+     * spotlight). Set to `false` to use only the embedded materials of the
+     * `.glb` (useful when the .glb already bakes its own lighting).
+     */
+    receivesLighting?: boolean;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Full scenery contract                                                       */
 /* -------------------------------------------------------------------------- */
 
@@ -184,6 +223,12 @@ export interface SceneryConfig {
     backdrop: BackdropConfig;
     props: Prop3DPlacement[];
     postFX?: ScenePostFXConfig;
+    /**
+     * Optional `.glb` diorama mega-prop. When present and `enabled` is not
+     * `false`, the file is loaded via `SceneLoader.ImportMeshAsync` and
+     * parented under the scenery root.
+     */
+    diorama?: DioramaConfig;
     /**
      * Optional ambient particle layer (e.g. fireflies, dust motes).
      * If omitted, the biome's default ambient is used.

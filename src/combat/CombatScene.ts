@@ -15,6 +15,7 @@ import { CombatManager }                                   from './CombatManager
 import { CombatArtPreset, FloorConfig, SkyColors, SunConfig, getCombatArtPreset } from './CombatArtPresets';
 import { SceneBackdropManager }                            from '../rendering/SceneBackdropManager';
 import { SceneProps3DManager }                             from '../rendering/SceneProps3DManager';
+import { SceneDioramaManager }                             from '../rendering/SceneDioramaManager';
 import { ScenePostFX }                                     from '../rendering/ScenePostFX';
 import type { SceneryConfig }                              from '../rendering/SceneryTypes';
 import { getDefaultScenery }                               from '../biomes/forestBiome';
@@ -127,6 +128,7 @@ export class CombatScene {
   // Diorama scenery pipeline (replaces legacy SceneLayerManager).
   private _backdrop: SceneBackdropManager | null = null;
   private _props3D: SceneProps3DManager | null = null;
+  private _diorama: SceneDioramaManager | null = null;
   private _postFX: ScenePostFX | null = null;
   private _activeScenery: SceneryConfig | null = null;
 
@@ -312,6 +314,8 @@ export class CombatScene {
     this._backdrop = null;
     this._props3D?.dispose();
     this._props3D = null;
+    this._diorama?.dispose();
+    this._diorama = null;
     this._postFX?.dispose();
     this._postFX = null;
     this._activeScenery = null;
@@ -699,6 +703,7 @@ export class CombatScene {
 
       this._backdrop?.dispose();
       this._props3D?.dispose();
+      this._diorama?.dispose();
       this._postFX?.dispose();
 
       this._backdrop = new SceneBackdropManager(
@@ -710,6 +715,13 @@ export class CombatScene {
 
       this._props3D = new SceneProps3DManager(this._scene, this._currentSceneryRoot);
       void this._props3D.placeProps(this._activeScenery.props);
+
+      // Optional .glb diorama mega-prop (Tripo3D / Blender authored).
+      // Awaited asynchronously without blocking the rest of the setup.
+      if (this._activeScenery.diorama) {
+          this._diorama = new SceneDioramaManager(this._scene, this._currentSceneryRoot);
+          void this._diorama.setup(this._activeScenery.diorama);
+      }
 
       this._postFX = new ScenePostFX(this._scene, this._camera.babylonCamera);
       this._postFX.setup(this._activeScenery.postFX, this._renderingPipeline ?? undefined);
