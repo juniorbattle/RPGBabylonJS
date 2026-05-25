@@ -47,11 +47,21 @@ const forestProps: Prop3DPlacement[] = [
     { primitive: 'tree-blob', position: [22, 0, 10], scale: 1.2, tint: [0.18, 0.40, 0.22], rotationY: 60 },
 
     // ── Foreground props : intimate framing close to camera ───────────
+    // Left cluster
+    { primitive: 'tree-blob',position: [-8, 0, -3], scale: 1.0, tint: [0.16, 0.34, 0.18], depth: 'foreground', rotationY: 20 },
     { primitive: 'bush',     position: [-3, 0, -2], scale: 1.6, tint: [0.22, 0.50, 0.26], depth: 'foreground' },
-    { primitive: 'rock',     position: [ 2, 0, -3], scale: 1.4, tint: [0.30, 0.32, 0.28], depth: 'foreground' },
+    { primitive: 'rock',     position: [-1, 0, -1], scale: 1.2, tint: [0.30, 0.32, 0.28], depth: 'foreground' },
     { primitive: 'tree-blob',position: [-5, 0, -5], scale: 0.8, tint: [0.24, 0.48, 0.26], depth: 'foreground', rotationY: 30 },
+    { primitive: 'bush',     position: [-7, 0, -7], scale: 1.1, tint: [0.18, 0.42, 0.22], depth: 'foreground' },
+    // Center detail
+    { primitive: 'rock',     position: [ 2, 0, -3], scale: 1.4, tint: [0.32, 0.34, 0.30], depth: 'foreground' },
+    { primitive: 'bush',     position: [ 6, 0, -2], scale: 1.0, tint: [0.20, 0.45, 0.22], depth: 'foreground' },
+    // Right cluster
     { primitive: 'bush',     position: [11, 0, -2], scale: 1.5, tint: [0.20, 0.46, 0.24], depth: 'foreground' },
+    { primitive: 'rock',     position: [14, 0, -1], scale: 1.1, tint: [0.30, 0.32, 0.30], depth: 'foreground' },
     { primitive: 'tree-blob',position: [18, 0, -5], scale: 0.9, tint: [0.22, 0.46, 0.26], depth: 'foreground', rotationY: -40 },
+    { primitive: 'tree-blob',position: [22, 0, -3], scale: 1.0, tint: [0.16, 0.36, 0.20], depth: 'foreground', rotationY: -15 },
+    { primitive: 'bush',     position: [21, 0, -7], scale: 1.1, tint: [0.18, 0.40, 0.22], depth: 'foreground' },
 
     // ── Ground details around the plateau ─────────────────────────────
     { primitive: 'rock', position: [ 0, 0,  4], scale: 0.7, tint: [0.32, 0.34, 0.30] },

@@ -102,7 +102,54 @@ export class SceneProps3DManager {
         mesh.parent = this.root;
         mesh.renderingGroupId = placement.depth === 'foreground' ? 1 : 0;
 
+        // Cheap ground-contact shadow disc parented to the prop. Sized to the
+        // visible footprint of the merged primitive (~1.4x the base radius).
+        const shadowRadius = this.shadowRadiusFor(this.resolveShape(placement));
+        if (shadowRadius > 0) {
+            const shadow = this.buildShadowDisc(`${mesh.name}_shadow`, shadowRadius);
+            shadow.parent = mesh;
+            // Shadow sits in world Y=0 regardless of where the mesh origin is.
+            // Since we parent to the mesh (already at world position), shadow
+            // position is the *negation* of mesh.position.y to land back on ground.
+            shadow.position.y = -py + 0.02;
+            // Counter the parent's uniform scale so the shadow keeps a consistent
+            // perceived size despite the prop scale variations.
+            const inv = 1 / scale;
+            shadow.scaling.set(inv, inv, inv);
+            shadow.renderingGroupId = mesh.renderingGroupId;
+            this.spawned.push(shadow);
+        }
+
         this.spawned.push(mesh);
+    }
+
+    private shadowRadiusFor(shape: PrimitiveShape): number {
+        switch (shape) {
+            case 'tree-cone': return 1.8;
+            case 'tree-blob': return 2.4;
+            case 'rock':      return 1.0;
+            case 'bush':      return 0.8;
+            case 'pillar':    return 0.7;
+            case 'crystal':   return 0.7;
+        }
+    }
+
+    private buildShadowDisc(id: string, radius: number): Mesh {
+        const disc = MeshBuilder.CreateDisc(id, { radius, tessellation: 16 }, this.scene);
+        disc.rotation.x = Math.PI / 2; // lay flat on XZ
+        disc.isPickable = false;
+        const mat = new StandardMaterial(`${id}_mat`, this.scene);
+        mat.diffuseColor = new Color3(0, 0, 0);
+        mat.emissiveColor = new Color3(0, 0, 0);
+        mat.specularColor = new Color3(0, 0, 0);
+        mat.alpha = 0.35;
+        mat.disableLighting = true;
+        mat.backFaceCulling = false;
+        mat.disableDepthWrite = true;
+        mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+        disc.material = mat;
+        this.materials.push(mat);
+        return disc;
     }
 
     private resolveShape(placement: Prop3DPlacement): PrimitiveShape {
@@ -122,7 +169,22 @@ export class SceneProps3DManager {
 
     private buildPrimitive(shape: PrimitiveShape, placement: Prop3DPlacement): Mesh | null {
         const id = `prop_${placement.asset ?? shape}_${this.spawned.length}`;
-        const tint = placement.tint ?? this.defaultTintFor(shape);
+        // Seed-stable variation : per-placement tint perturbation in [-0.06..+0.06]
+        // on each channel. Avoids monotone blocks of identical colors without
+        // overriding the author's explicit tint intent.
+        const baseTint = placement.tint ?? this.defaultTintFor(shape);
+        const seed = this.spawned.length * 9301 + 49297;
+        const rng = () => {
+            // Linear congruential generator, deterministic per-prop.
+            const next = (seed * (this.spawned.length + 7)) % 233280;
+            return (next / 233280);
+        };
+        const jitter = () => (rng() - 0.5) * 0.12;
+        const tint: [number, number, number] = [
+            Math.max(0, Math.min(1, baseTint[0] + jitter() * 0.6)),
+            Math.max(0, Math.min(1, baseTint[1] + jitter())),
+            Math.max(0, Math.min(1, baseTint[2] + jitter() * 0.6)),
+        ];
 
         switch (shape) {
             case 'tree-cone': return this.buildTreeCone(id, tint, placement.depth === 'foreground');
@@ -138,40 +200,51 @@ export class SceneProps3DManager {
     /* Primitive builders                                                      */
     /* ---------------------------------------------------------------------- */
 
+    /**
+     * Conifer / fir silhouette : single tapered cylinder grounded at Y=0.
+     * No visible trunk — distant trees in HD-2D Octopath look like pure foliage
+     * silhouettes anyway, and removing the trunk eliminates the visible gap
+     * we used to get from imperfect cylinder/cone merging.
+     */
     private buildTreeCone(id: string, tint: [number, number, number], dark: boolean): Mesh {
-        const trunk = MeshBuilder.CreateCylinder(`${id}_trunk`, {
-            diameterTop: 0.4, diameterBottom: 0.6, height: 1.8, tessellation: 8,
+        const cone = MeshBuilder.CreateCylinder(id, {
+            diameterTop: 0,
+            diameterBottom: 3.2,
+            height: 7.5,
+            tessellation: 10,
         }, this.scene);
-        trunk.position.y = 0.9;
-        trunk.material = this.mat(`${id}_trunkMat`, [0.18, 0.10, 0.06], dark);
-
-        const foliage = MeshBuilder.CreateCylinder(`${id}_foliage`, {
-            diameterTop: 0, diameterBottom: 3.2, height: 7.5, tessellation: 12,
-        }, this.scene);
-        foliage.position.y = 1.8 + 7.5 / 2 - 0.6;
-        foliage.material = this.mat(`${id}_foliageMat`, tint, dark);
-
-        const merged = Mesh.MergeMeshes([trunk, foliage], true, true, undefined, false, true);
-        if (!merged) return foliage; // fallback
-        merged.name = id;
-        return merged;
+        cone.position.y = 7.5 / 2;
+        cone.material = this.mat(`${id}_mat`, tint, dark);
+        return cone;
     }
 
+    /**
+     * Broadleaf silhouette : squished sphere on a small dark base that hides
+     * any gap with the ground. The base also doubles as a fake trunk hint.
+     * Both meshes are merged into a single Mesh with multi-material so the
+     * darker base color survives.
+     */
     private buildTreeBlob(id: string, tint: [number, number, number], dark: boolean): Mesh {
-        const trunk = MeshBuilder.CreateCylinder(`${id}_trunk`, {
-            diameterTop: 0.5, diameterBottom: 0.8, height: 2.5, tessellation: 8,
-        }, this.scene);
-        trunk.position.y = 1.25;
-        trunk.material = this.mat(`${id}_trunkMat`, [0.20, 0.12, 0.07], dark);
-
         const foliage = MeshBuilder.CreateSphere(`${id}_foliage`, {
-            diameter: 5.5, segments: 8,
+            diameter: 5.5,
+            segments: 10,
         }, this.scene);
-        foliage.scaling.y = 0.9;
-        foliage.position.y = 2.5 + 2.2;
+        foliage.scaling.y = 0.85;
+        foliage.position.y = 2.55;
         foliage.material = this.mat(`${id}_foliageMat`, tint, dark);
 
-        const merged = Mesh.MergeMeshes([trunk, foliage], true, true, undefined, false, true);
+        // Tiny dark base : kept SHORT and stuffed INTO the foliage so no gap
+        // can appear regardless of camera angle.
+        const base = MeshBuilder.CreateCylinder(`${id}_base`, {
+            diameterTop: 1.6,
+            diameterBottom: 0.9,
+            height: 1.4,
+            tessellation: 10,
+        }, this.scene);
+        base.position.y = 0.7;
+        base.material = this.mat(`${id}_baseMat`, [tint[0] * 0.45, tint[1] * 0.45, tint[2] * 0.35], dark);
+
+        const merged = Mesh.MergeMeshes([base, foliage], true, true, undefined, false, true);
         if (!merged) return foliage;
         merged.name = id;
         return merged;
