@@ -316,6 +316,10 @@ export class CombatScene {
     this._postFX = null;
     this._activeScenery = null;
 
+    // Reset scene fog so it doesn't leak into other scenes (equipment, etc.).
+    this._scene.fogMode = Scene.FOGMODE_NONE;
+    this._scene.fogDensity = 0;
+
     if (this._currentSceneryRoot) {
         this._currentSceneryRoot.dispose(false, true);
         this._currentSceneryRoot = null;
@@ -710,9 +714,75 @@ export class CombatScene {
       this._postFX = new ScenePostFX(this._scene, this._camera.babylonCamera);
       this._postFX.setup(this._activeScenery.postFX, this._renderingPipeline ?? undefined);
 
+      // Exponential teal fog : reads as aerial perspective on back-row props.
+      // Density is intentionally low so the plateau and sprites stay crisp.
+      this._scene.fogMode = Scene.FOGMODE_EXP2;
+      this._scene.fogColor = new Color3(0.06, 0.13, 0.10);
+      this._scene.fogDensity = 0.012;
+
+      // God rays : five oblique shafts of light coming down-right, parented
+      // to the scenery root so endCombat sweeps them away.
+      this.buildGodRays();
+
       this._camera.onModeChanged = (mode) => {
           this._postFX?.setCinematicMode(mode === CameraMode.Focus);
       };
+  }
+
+  /**
+   * Creates a handful of additive translucent planes faking volumetric
+   * "shafts of light" cutting through the forest canopy. Each shaft is a
+   * tall, narrow, semi-transparent plane tilted along the sun direction.
+   * Pure post-FX bloom on the warm tint sells the volumetric illusion at
+   * zero shader cost.
+   */
+  private buildGodRays(): void {
+      if (!this._currentSceneryRoot) return;
+
+      const root = new TransformNode('godRaysRoot', this._scene);
+      root.parent = this._currentSceneryRoot;
+
+      const mat = new StandardMaterial('godRayMat', this._scene);
+      mat.diffuseColor = new Color3(0, 0, 0);
+      mat.emissiveColor = new Color3(1.0, 0.85, 0.55);
+      mat.specularColor = new Color3(0, 0, 0);
+      mat.disableLighting = true;
+      mat.backFaceCulling = false;
+      mat.alpha = 0.14;
+      mat.alphaMode = 1; // ADD blend mode -> brightens whatever is behind.
+      mat.disableDepthWrite = true;
+      mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+
+      // Anchor near the back-left of the plateau, ray exit direction
+      // matches the warm sun (front-right-above) so the shafts fan
+      // outward toward the camera.
+      const shafts: Array<{ x: number; z: number; w: number; tilt: number; alpha: number }> = [
+          { x: -2, z: 16, w: 1.4, tilt:  4, alpha: 0.18 },
+          { x:  4, z: 18, w: 1.0, tilt: -2, alpha: 0.14 },
+          { x:  9, z: 17, w: 1.6, tilt:  6, alpha: 0.20 },
+          { x: 14, z: 19, w: 1.0, tilt: -4, alpha: 0.12 },
+          { x: 19, z: 16, w: 1.3, tilt:  3, alpha: 0.16 },
+      ];
+
+      shafts.forEach((s, i) => {
+          const shaftMat = mat.clone(`godRayMat_${i}`);
+          shaftMat.alpha = s.alpha;
+          const plane = MeshBuilder.CreatePlane(`godRay_${i}`, { width: s.w, height: 28 }, this._scene);
+          plane.material = shaftMat;
+          plane.parent = root;
+          plane.position.set(s.x, 12, s.z);
+          // Slight outward tilt + sun-leaning angle.
+          plane.rotation.set(
+              (10 * Math.PI) / 180,           // pitch slightly forward
+              ((i % 2 === 0 ? 14 : -14) * Math.PI) / 180,  // alternating yaw for variety
+              (s.tilt * Math.PI) / 180,       // roll
+          );
+          plane.isPickable = false;
+          plane.renderingGroupId = 0;
+          plane.alwaysSelectAsActiveMesh = true;
+      });
+
+      mat.dispose();  // base mat is no longer needed (we cloned per-shaft).
   }
 
   private buildStageGroundAccent(

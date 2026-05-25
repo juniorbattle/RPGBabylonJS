@@ -219,19 +219,49 @@ export class SceneProps3DManager {
     }
 
     /**
-     * Broadleaf silhouette : squished sphere on a small dark base that hides
-     * any gap with the ground. The base also doubles as a fake trunk hint.
-     * Both meshes are merged into a single Mesh with multi-material so the
-     * darker base color survives.
+     * Broadleaf silhouette : ORGANIC cluster of 4 sub-spheres at slight
+     * horizontal/vertical offsets, on a tiny dark base. The cluster
+     * approach kills the "perfect Babylon sphere" look that placeholder
+     * primitives normally betray, and gives the foliage a believable
+     * lumpy hand-painted Octopath silhouette.
+     *
+     * All four foliage spheres share the same tint so they merge with a
+     * single material; a slightly brighter highlight sphere is added on
+     * top to fake top-down sunlight catching the canopy.
      */
     private buildTreeBlob(id: string, tint: [number, number, number], dark: boolean): Mesh {
-        const foliage = MeshBuilder.CreateSphere(`${id}_foliage`, {
-            diameter: 3.6,
-            segments: 10,
-        }, this.scene);
-        foliage.scaling.y = 0.95;
-        foliage.position.y = 2.0;
-        foliage.material = this.mat(`${id}_foliageMat`, tint, dark);
+        const foliageMat   = this.mat(`${id}_foliageMat`,   tint, dark);
+        const highlightMat = this.mat(`${id}_highlightMat`, [
+            Math.min(1, tint[0] + 0.10),
+            Math.min(1, tint[1] + 0.14),
+            Math.min(1, tint[2] + 0.08),
+        ], dark);
+        const baseMat = this.mat(`${id}_baseMat`,
+            [tint[0] * 0.45, tint[1] * 0.45, tint[2] * 0.35], dark);
+
+        // Main lower blob — largest, defines the canopy footprint.
+        const main = MeshBuilder.CreateSphere(`${id}_b0`, { diameter: 3.0, segments: 10 }, this.scene);
+        main.scaling.set(1.0, 0.92, 1.0);
+        main.position.set(0, 1.8, 0);
+        main.material = foliageMat;
+
+        // Side bulge — pushes outward on +X for asymmetric silhouette.
+        const sideA = MeshBuilder.CreateSphere(`${id}_b1`, { diameter: 2.2, segments: 9 }, this.scene);
+        sideA.scaling.set(0.95, 0.85, 1.0);
+        sideA.position.set(0.85, 1.95, 0.10);
+        sideA.material = foliageMat;
+
+        // Side bulge — pushes -X, slightly lower than sideA.
+        const sideB = MeshBuilder.CreateSphere(`${id}_b2`, { diameter: 1.9, segments: 9 }, this.scene);
+        sideB.scaling.set(0.95, 0.85, 1.0);
+        sideB.position.set(-0.80, 1.70, -0.05);
+        sideB.material = foliageMat;
+
+        // Top bulge — highlight catching sunlight from above.
+        const top = MeshBuilder.CreateSphere(`${id}_b3`, { diameter: 1.6, segments: 9 }, this.scene);
+        top.scaling.set(0.95, 0.95, 0.95);
+        top.position.set(0.10, 2.85, 0.10);
+        top.material = highlightMat;
 
         // Tiny dark base : kept SHORT and stuffed INTO the foliage so no gap
         // can appear regardless of camera angle.
@@ -242,10 +272,17 @@ export class SceneProps3DManager {
             tessellation: 10,
         }, this.scene);
         base.position.y = 0.55;
-        base.material = this.mat(`${id}_baseMat`, [tint[0] * 0.45, tint[1] * 0.45, tint[2] * 0.35], dark);
+        base.material = baseMat;
 
-        const merged = Mesh.MergeMeshes([base, foliage], true, true, undefined, false, true);
-        if (!merged) return foliage;
+        const merged = Mesh.MergeMeshes(
+            [base, main, sideA, sideB, top],
+            true,    // disposeSource
+            true,    // allow32BitsIndices
+            undefined,
+            false,
+            true,    // multiMultiMaterials  -> keeps the base color distinct from foliage
+        );
+        if (!merged) return main;
         merged.name = id;
         return merged;
     }
