@@ -215,12 +215,14 @@ export class SceneBackdropManager {
         ctx.fillStyle = sky;
         ctx.fillRect(0, 0, W, H);
 
-        // 2. Moonlight halo : warm-tinted radial gradient in the upper third.
-        const moonX = W * 0.62;
-        const moonY = H * 0.22;
-        const moon = ctx.createRadialGradient(moonX, moonY, 10, moonX, moonY, H * 0.45);
-        moon.addColorStop(0.0, 'rgba(255, 235, 200, 0.55)');
-        moon.addColorStop(0.3, 'rgba(220, 230, 200, 0.18)');
+        // 2. Moonlight halo : pushed far into the UPPER-RIGHT corner so it
+        //    never sits behind the combat plateau. Much lower opacity so it
+        //    reads as a hint of off-screen light, not a yellow blob.
+        const moonX = W * 0.88;
+        const moonY = H * 0.10;
+        const moon = ctx.createRadialGradient(moonX, moonY, 10, moonX, moonY, H * 0.55);
+        moon.addColorStop(0.0, 'rgba(220, 200, 180, 0.18)');
+        moon.addColorStop(0.4, 'rgba(180, 200, 190, 0.06)');
         moon.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = moon;
         ctx.fillRect(0, 0, W, H);

@@ -753,28 +753,31 @@ export class CombatScene {
       mat.disableDepthWrite = true;
       mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
 
-      // Anchor near the back-left of the plateau, ray exit direction
-      // matches the warm sun (front-right-above) so the shafts fan
-      // outward toward the camera.
+      // Five shafts spanning the plateau width, positioned in front of the
+      // mid-back tree row (z = 13) so they actually cross the visible
+      // playfield. Tall (32 units) and stronger alpha so they read clearly
+      // against both the backdrop and the props.
       const shafts: Array<{ x: number; z: number; w: number; tilt: number; alpha: number }> = [
-          { x: -2, z: 16, w: 1.4, tilt:  4, alpha: 0.18 },
-          { x:  4, z: 18, w: 1.0, tilt: -2, alpha: 0.14 },
-          { x:  9, z: 17, w: 1.6, tilt:  6, alpha: 0.20 },
-          { x: 14, z: 19, w: 1.0, tilt: -4, alpha: 0.12 },
-          { x: 19, z: 16, w: 1.3, tilt:  3, alpha: 0.16 },
+          { x:  0, z: 13, w: 1.8, tilt:  5, alpha: 0.32 },
+          { x:  5, z: 14, w: 1.2, tilt: -3, alpha: 0.26 },
+          { x:  9, z: 13, w: 2.0, tilt:  6, alpha: 0.38 },
+          { x: 13, z: 14, w: 1.2, tilt: -4, alpha: 0.24 },
+          { x: 17, z: 13, w: 1.6, tilt:  4, alpha: 0.30 },
       ];
 
       shafts.forEach((s, i) => {
           const shaftMat = mat.clone(`godRayMat_${i}`);
           shaftMat.alpha = s.alpha;
-          const plane = MeshBuilder.CreatePlane(`godRay_${i}`, { width: s.w, height: 28 }, this._scene);
+          const plane = MeshBuilder.CreatePlane(`godRay_${i}`, { width: s.w, height: 32 }, this._scene);
           plane.material = shaftMat;
           plane.parent = root;
-          plane.position.set(s.x, 12, s.z);
-          // Slight outward tilt + sun-leaning angle.
+          plane.position.set(s.x, 14, s.z);
+          // Slight outward tilt + sun-leaning angle. Y rotation alternates
+          // so the shafts spread visually instead of all facing the camera
+          // flat.
           plane.rotation.set(
-              (10 * Math.PI) / 180,           // pitch slightly forward
-              ((i % 2 === 0 ? 14 : -14) * Math.PI) / 180,  // alternating yaw for variety
+              (12 * Math.PI) / 180,           // pitch slightly forward
+              ((i % 2 === 0 ? 16 : -16) * Math.PI) / 180,  // alternating yaw for variety
               (s.tilt * Math.PI) / 180,       // roll
           );
           plane.isPickable = false;

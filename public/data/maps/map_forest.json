@@ -14,17 +14,17 @@
   },
   "groundLayer": {
     "enabled": true,
-    "mode": "procedural",
+    "mode": "color",
     "textureFile": null,
-    "color": "#163018",
-    "opacity": 1,
-    "repeatX": 8,
-    "repeatY": 8,
+    "color": "#0e1a14",
+    "opacity": 0.92,
+    "repeatX": 1,
+    "repeatY": 1,
     "xOffset": 0,
     "zOffset": 0,
     "elevationOffset": 0,
-    "widthScale": 8,
-    "depthScale": 8
+    "widthScale": 1.8,
+    "depthScale": 1.8
   },
   "scenery": {
     "biome": "forest",
