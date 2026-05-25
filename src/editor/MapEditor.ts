@@ -1,9 +1,11 @@
 /**
  * MapEditor.ts  — GPA Tactics HD-2D Map Editor
  *
- * Direction artistique : Fantasy whimsical, style Octopath/Fire Emblem.
+ * Direction artistique : Fantasy whimsical, style Octopath/Fire Emblem (HD-2D diorama).
  * - Sol : SceneGroundLayer configurable (procedural / texture repeat / couleur)
- * - Décor : Stack de layers PNG géré par SceneLayerManager (back/mid/ground/frame/canopy/fx)
+ * - Décor : nouveau pipeline diorama (backdrop + props 3D) géré au runtime par CombatScene.
+ *           Le tab 'Layers' historique est désactivé — l'édition se fait pour l'instant
+ *           directement dans `public/data/maps/map_*.json > scenery`.
  * - Props : Pinceau manuel (placement, miroir, suppression clic-droit)
  */
 
@@ -14,9 +16,7 @@ import {
 } from '@babylonjs/core';
 
 import { CombatGrid, GridConfig } from '../combat/CombatGrid';
-import { MapEditorLayersTab } from '../editor/MapEditorLayersTab';
-import { SceneLayerManager } from '../rendering/SceneLayerManager';
-import type { SceneGroundLayerConfig, SceneLayerInput, SceneLayerStack } from '../rendering/SceneLayerTypes';
+import type { SceneGroundLayerConfig } from '../rendering/SceneGroundTypes';
 
 // ---------------------------------------------------------------------------
 // Types manifest
@@ -441,8 +441,10 @@ export class MapEditor {
         depthScale: 12,
     };
     private layerPreviewRoot!: TransformNode;
-    private layerManager: SceneLayerManager | null = null;
-    private layersTab: MapEditorLayersTab | null = null;
+    // Legacy SceneLayerManager + MapEditorLayersTab removed.
+    // The diorama scenery (backdrop + props 3D) is now configured at runtime in
+    // CombatScene from `map_*.json > scenery`. A future SceneryEditorTab will
+    // replace the previous layers editor.
 
     private static readonly SAFE_CLEARANCE = 2.5;
 
@@ -580,7 +582,7 @@ export class MapEditor {
         this.bgPlane.parent    = this.skyRoot;
         this.repaintSky();
         this.bgPlane.setEnabled(false);
-        this.rebuildSceneLayers();
+        this.rebuildSceneLayers();   // no-op stub, kept to minimize churn
     }
 
     private mergeGroundLayerConfig(raw?: Partial<SceneGroundLayerConfig>): SceneGroundLayerConfig {
@@ -649,33 +651,14 @@ export class MapEditor {
         }
     }
 
-    private rebuildSceneLayers(overrides?: SceneLayerInput): void {
-        if (!this.layerPreviewRoot) return;
-        const mapW = this.customW * this.tileSize;
-        const mapD = this.customD * this.tileSize;
-        this.layerManager?.dispose();
-        this.layerManager = new SceneLayerManager(
-            this.scene,
-            this.layerPreviewRoot,
-            mapW,
-            mapD,
-            0
-        );
-        this.layerManager.buildLayers(
-            this.currentBiome,
-            overrides ?? this.layersTab?.getSceneLayersForBiome(this.currentBiome)
-        );
-    }
-
-    private createEmptySceneLayerStack(): SceneLayerStack {
-        return {
-            id: `${this.currentBiome}_empty_layers`,
-            biome: this.currentBiome,
-            layers: [],
-            particleColor: [0.4, 1, 0.2],
-            particleCount: 0,
-            particleAlpha: [0.06, 0.2],
-        };
+    /**
+     * No-op since the diorama scenery pipeline took over. Kept so existing
+     * call sites (resize handlers, JSON import paths, biome refresh) keep
+     * working unchanged. A future SceneryEditorTab will live-preview the
+     * backdrop + 3D props here.
+     */
+    private rebuildSceneLayers(_overrides?: unknown): void {
+        // intentionally empty
     }
 
     public repaintGround(): void {
@@ -1165,21 +1148,25 @@ export class MapEditor {
             });
         });
 
-        const bgFiles = this.manifest?.backgrounds ?? [];
+        // Legacy MapEditorLayersTab has been removed alongside SceneLayerManager.
+        // The new diorama scenery pipeline (backdrop + props 3D) is authored for
+        // now directly in `public/data/maps/map_*.json > scenery`. A dedicated
+        // SceneryEditorTab will replace this section in a follow-up.
         const layersRoot = document.getElementById('tab-layers');
         if (layersRoot) {
-            this.layersTab = new MapEditorLayersTab(
-                this,
-                bgFiles,
-                layersRoot
-            );
-            this.layersTab.setBiome(this.currentBiome);
-            this.layersTab.onLayerChange = (biome, overrides) => {
-                this.currentBiome = biome;
-                this.rebuildSceneLayers(overrides);
-            };
-            this.rebuildSceneLayers();
-            this.focusLayerPreviewCamera();
+            layersRoot.innerHTML = `
+                <div style="padding:18px; color:#cfd8dc; font-family: system-ui, sans-serif; line-height:1.5">
+                    <h3 style="margin-top:0;color:#90caf9">Scenery editor — coming soon</h3>
+                    <p>L'ancien stack de layers PNG a été remplacé par un pipeline diorama (backdrop + props 3D + post-FX).</p>
+                    <p>Édite la section <code>scenery</code> directement dans <code>public/data/maps/map_&lt;biome&gt;.json</code> en attendant le nouvel onglet d'édition visuelle.</p>
+                    <ul>
+                        <li><b>backdrop</b> : gradient ou image, distance, parallaxFactor, oversize.</li>
+                        <li><b>props</b> : liste de Prop3DPlacement (asset / primitive, position, scale, tint, depth).</li>
+                        <li><b>postFX</b> : vignette, bloom, grain, ACES.</li>
+                        <li><b>ambient</b> : particules (couleur, count, alpha).</li>
+                    </ul>
+                </div>
+            `;
         }
 
         const btnCam = document.getElementById("modeCam")! as HTMLButtonElement;
@@ -1319,7 +1306,9 @@ export class MapEditor {
             decorations: decorList,
             proceduralMeta: { seed:this.procSeed, density:this.procDensity, cloudSeed:this.cloudSeed, groundSeed:this.groundSeed }
         };
-        out.sceneLayers = this.layersTab?.getSceneLayersForExport() ?? this.createEmptySceneLayerStack();
+        // 'sceneLayers' has been retired. Scenery is authored directly in the
+        // JSON file under the 'scenery' key. Nothing to inject here for now;
+        // the future SceneryEditorTab will produce a SceneryConfig export.
         const blob = new Blob([JSON.stringify(out,null,2)],{type:"application/json"});
         const url  = URL.createObjectURL(blob);
         const a    = document.createElement("a");
@@ -1338,24 +1327,10 @@ export class MapEditor {
                 if (d.biome) {
                     this.currentBiome=d.biome;
                     this.refreshBiome(d.biome);
-                    this.layersTab?.setBiome(d.biome);
                 }
-                if (d.sceneLayers) {
-                    const sceneLayerBiome = d.sceneLayers.biome ?? d.biome ?? this.currentBiome;
-                    if (!d.biome && sceneLayerBiome) {
-                        this.currentBiome = sceneLayerBiome;
-                        this.refreshBiome(sceneLayerBiome);
-                    }
-                    this.layersTab?.loadSceneLayersFromJSON(d.sceneLayers);
-                    this.rebuildSceneLayers(d.sceneLayers);
-                } else if (d.layerOverrides) {
-                    this.layersTab?.loadOverridesFromJSON(d.layerOverrides);
-                    this.rebuildSceneLayers();
-                } else {
-                    const emptyLayers = this.createEmptySceneLayerStack();
-                    this.layersTab?.loadSceneLayersFromJSON(emptyLayers);
-                    this.rebuildSceneLayers(emptyLayers);
-                }
+                // Legacy 'sceneLayers' / 'layerOverrides' import paths are now
+                // ignored. The new 'scenery' block is consumed at runtime by
+                // CombatScene, not by this editor.
                 if (d.groundLayer) {
                     this.groundLayerConfig = this.mergeGroundLayerConfig(d.groundLayer);
                     this.applyGroundLayerConfig();
