@@ -13,9 +13,13 @@ import {
 import { CombatGrid, GridConfig }                          from './CombatGrid';
 import { CombatManager }                                   from './CombatManager';
 import { CombatArtPreset, FloorConfig, SkyColors, SunConfig, getCombatArtPreset } from './CombatArtPresets';
-import { SceneLayerManager, SCENE_LAYER_PRESETS } from '../rendering/SceneLayerManager';
-import type { SceneGroundLayerConfig, SceneLayerInput } from '../rendering/SceneLayerTypes';
-import { TacticalCamera }                                  from '../camera/TacticalCamera';
+import { SceneBackdropManager }                            from '../rendering/SceneBackdropManager';
+import { SceneProps3DManager }                             from '../rendering/SceneProps3DManager';
+import { ScenePostFX }                                     from '../rendering/ScenePostFX';
+import type { SceneryConfig }                              from '../rendering/SceneryTypes';
+import { getDefaultScenery }                               from '../biomes/forestBiome';
+import type { SceneGroundLayerConfig }                     from '../rendering/SceneGroundTypes';
+import { TacticalCamera, CameraMode }                      from '../camera/TacticalCamera';
 import { ClanManager }                                     from '../data/ClanManager';
 import { GameManager }                                     from '../data/GameManager';
 import { DataManager }                                     from '../data/DataManager';
@@ -40,8 +44,12 @@ interface ExportedCombatMapData {
     groundSeed?: number;
   };
   groundLayer?: Partial<SceneGroundLayerConfig>;
-  sceneLayers?: SceneLayerInput;
-  layerOverrides?: Record<string, any>;
+  /**
+   * Diorama scenery (backdrop + 3D props + post-FX). Replaces the legacy
+   * `sceneLayers` panel stack. If absent, the default preset for `biome`
+   * is used (`getDefaultScenery`).
+   */
+  scenery?: Partial<SceneryConfig>;
 }
 
 interface ExportedDecorationData {
@@ -115,7 +123,12 @@ export class CombatScene {
   private _activeArtPreset: CombatArtPreset | null = null;
   private _cinematicOccluders: CinematicOccluderMaterial[] = [];
   private _propShadowMat: StandardMaterial | null = null;
-  private _layerManager: SceneLayerManager | null = null;
+
+  // Diorama scenery pipeline (replaces legacy SceneLayerManager).
+  private _backdrop: SceneBackdropManager | null = null;
+  private _props3D: SceneProps3DManager | null = null;
+  private _postFX: ScenePostFX | null = null;
+  private _activeScenery: SceneryConfig | null = null;
 
   constructor(scene: Scene, _canvas: HTMLCanvasElement, engine: Engine) {
     this._scene = scene;
@@ -157,10 +170,15 @@ export class CombatScene {
     await this.buildDioramaScenery(gridW * 2, gridD * 2, biome, customMapData, artPreset);
 
     this._camera = new TacticalCamera(this._scene);
-    this._scene.activeCamera = this._camera.babylonCamera; 
-    
+    this._scene.activeCamera = this._camera.babylonCamera;
+
     // Set up Tilt-Shift & HD-2D Post Processing
     this.setupPostProcessing(artPreset);
+
+    // Wire diorama scenery (backdrop + 3D props + scenery-aware post-FX) now
+    // that the TacticalCamera exists. The terrain ground + ambient particles
+    // were already built earlier in buildDioramaScenery.
+    this.setupSceneryWithCamera();
     
     // GRID DIMENSIONS SYNC
     // Configuration beaucoup plus douce pour matcher la ref Pixel Art (Sol plat avec légères irrégularités)
@@ -290,8 +308,13 @@ export class CombatScene {
     this._propShadowMat?.dispose();
     this._propShadowMat = null;
 
-    this._layerManager?.dispose();
-    this._layerManager = null;
+    this._backdrop?.dispose();
+    this._backdrop = null;
+    this._props3D?.dispose();
+    this._props3D = null;
+    this._postFX?.dispose();
+    this._postFX = null;
+    this._activeScenery = null;
 
     if (this._currentSceneryRoot) {
         this._currentSceneryRoot.dispose(false, true);
@@ -405,7 +428,7 @@ export class CombatScene {
   }
 
   private setCinematicDepthMode(enabled: boolean): void {
-      this._layerManager?.setCinematicMode(enabled);
+      this._postFX?.setCinematicMode(enabled);
 
       this._cinematicOccluders.forEach(entry => {
           entry.material.alpha = enabled ? entry.cinematicAlpha : entry.normalAlpha;
@@ -463,52 +486,33 @@ export class CombatScene {
       if (mapData?.floorY !== undefined && mapData?.gridElevation === undefined) {
           baseSurfaceY = mapData.floorY;
       }
-      const layerPreset = SCENE_LAYER_PRESETS[biome] ?? SCENE_LAYER_PRESETS['forest'];
-      const hasSceneLayersConfig = !!mapData && Object.prototype.hasOwnProperty.call(mapData, 'sceneLayers');
-      const sceneLayerInput = (
-          hasSceneLayersConfig
-              ? mapData?.sceneLayers
-              : mapData?.layerOverrides?.[biome]
-      ) as SceneLayerInput | undefined;
-      const firstLayerFile = (stack: any): string | null => {
-          if (Array.isArray(stack?.layers)) {
-              return stack.layers.find((layer: any) => layer?.enabled !== false && layer?.file)?.file ?? null;
+      // 0. SCENERY CONFIG : merge map override with biome default preset.
+      const defaultScenery = getDefaultScenery(biome);
+      const sceneryOverride = mapData?.scenery;
+      const sceneryConfig: SceneryConfig = sceneryOverride
+          ? {
+              biome: (sceneryOverride.biome ?? defaultScenery.biome) as SceneryConfig['biome'],
+              backdrop: { ...defaultScenery.backdrop, ...sceneryOverride.backdrop } as SceneryConfig['backdrop'],
+              props: sceneryOverride.props ?? defaultScenery.props,
+              postFX: { ...defaultScenery.postFX, ...sceneryOverride.postFX },
+              ambient: { ...defaultScenery.ambient, ...sceneryOverride.ambient } as SceneryConfig['ambient'],
           }
-          return null;
-      };
-      const authoredLayerFile =
-          firstLayerFile(sceneLayerInput) ??
-          (sceneLayerInput as any)?.mainMidground?.file ??
-          (sceneLayerInput as any)?.midground?.file ??
-          (sceneLayerInput as any)?.backAtmosphere?.file ??
-          (sceneLayerInput as any)?.background?.file;
-      const presetLayerFile =
-          firstLayerFile(layerPreset) ??
-          layerPreset.mainMidground?.file ??
-          layerPreset.midground?.file ??
-          layerPreset.backAtmosphere?.file ??
-          layerPreset.background?.file;
-      const shouldUsePresetLayers = !customMapLoaded && biome === 'forest';
-      const usesLayerBackdrop = !!authoredLayerFile || (shouldUsePresetLayers && !!presetLayerFile);
-      
-      // 1. LE SOL INFINI (Terrain Plane texturé HD-2D)
-      // Remplace notre "Diorama Box / Table épaisse" d'avant par une plaine plate sur laquelle on répète l'image d'herbe.
+          : defaultScenery;
+      this._activeScenery = sceneryConfig;
+
+      // 1. GROUND (combat plateau base) — kept as a flat textured ground centered on the plateau.
       const groundLayer = mapData?.groundLayer;
       const baseW = mapW * (groundLayer?.widthScale ?? 8);
       const baseD = mapD * (groundLayer?.depthScale ?? 8);
       const terrainPlane = MeshBuilder.CreateGround("terrainBase", { width: baseW, height: baseD }, this._scene);
       terrainPlane.position.x = groundLayer?.xOffset ?? 0;
-      terrainPlane.position.y = baseSurfaceY + (groundLayer?.elevationOffset ?? 0); 
-      terrainPlane.position.z = mapD / 2 + (groundLayer?.zOffset ?? 0); // Centré un peu en arrière
+      terrainPlane.position.y = baseSurfaceY + (groundLayer?.elevationOffset ?? 0);
+      terrainPlane.position.z = mapD / 2 + (groundLayer?.zOffset ?? 0);
       terrainPlane.isPickable = false;
-      const shouldEnableTerrainPlane = groundLayer
-          ? groundLayer.enabled !== false
-          : (!customMapLoaded && !usesLayerBackdrop);
-      terrainPlane.setEnabled(shouldEnableTerrainPlane);
-      
+      terrainPlane.setEnabled(groundLayer?.enabled !== false);
+
       const terMat = new StandardMaterial("terrainMat", this._scene);
-      
-      // Récupération de la couleur naturelle mais avec une ombre globale atténuée 
+
       if (groundLayer?.mode === 'texture' && groundLayer.textureFile) {
           const groundTex = new Texture(`/assets/backgrounds/${groundLayer.textureFile}`, this._scene, false, true, Texture.TRILINEAR_SAMPLINGMODE);
           groundTex.wrapU = Texture.WRAP_ADDRESSMODE;
@@ -521,21 +525,11 @@ export class CombatScene {
           terMat.diffuseColor = Color3.White();
           terMat.emissiveColor = new Color3(0.08, 0.10, 0.07);
           terMat.alpha = groundLayer.opacity ?? 1;
-          terMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
-          terMat.disableDepthWrite = terMat.alpha < 1;
       } else if (groundLayer?.mode === 'color') {
           const groundColor = Color3.FromHexString(groundLayer.color ?? '#163018');
           terMat.diffuseColor = groundColor;
           terMat.emissiveColor = groundColor.scale(0.18);
           terMat.alpha = groundLayer.opacity ?? 1;
-          terMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
-          terMat.disableDepthWrite = terMat.alpha < 1;
-      } else if (usesLayerBackdrop) {
-          terMat.diffuseColor = new Color3(0.005, 0.014, 0.006);
-          terMat.emissiveColor = new Color3(0.002, 0.010, 0.004);
-          terMat.alpha = groundLayer?.opacity ?? 0.16;
-          terMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
-          terMat.disableDepthWrite = true;
       } else {
           terMat.diffuseColor = preset.terrainTint;
           const groundTex = await this.createProceduralGroundTexture(
@@ -543,50 +537,29 @@ export class CombatScene {
               mapData?.proceduralMeta?.groundSeed ?? 1,
               preset.floor
           );
-          groundTex.uScale = groundLayer?.repeatX ?? 8; 
+          groundTex.uScale = groundLayer?.repeatX ?? 8;
           groundTex.vScale = groundLayer?.repeatY ?? 8;
           terMat.diffuseTexture = groundTex;
           terMat.emissiveColor = preset.terrainEmissive;
           terMat.alpha = groundLayer?.opacity ?? 1;
       }
-      terMat.specularColor = new Color3(0.0, 0.0, 0.0);
+      terMat.specularColor = new Color3(0, 0, 0);
       if (terMat.alpha < 1) {
           terMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+          terMat.disableDepthWrite = true;
       }
       terrainPlane.material = terMat;
       terrainPlane.parent = sceneryRoot;
 
-      if (!usesLayerBackdrop) {
-          this.buildStageGroundAccent(sceneryRoot, mapW, mapD, baseSurfaceY, preset);
-      }
+      this.buildStageGroundAccent(sceneryRoot, mapW, mapD, baseSurfaceY, preset);
 
-      // 2. BACKGROUND HD-2D - Layers PNG par biome
-      // Nouveau contrat centre midground : back atmosphere, main midground,
-      // ground blend, foreground corners, upper canopy et FX overlay.
-      this._layerManager = new SceneLayerManager(
-          this._scene,
-          sceneryRoot,
-          mapW,
-          mapD,
-          baseSurfaceY
-      );
+      // 2. DIORAMA SCENERY : single-plane backdrop + 3D props.
+      // The TacticalCamera is built AFTER buildDioramaScenery, so we defer
+      // the actual backdrop/props/postFX setup to a follow-up step (see below).
+      this._currentSceneryRoot = sceneryRoot;
 
-      // Surcharges optionnelles exportées depuis le MapEditor.
-      const layerInputForBuild = sceneLayerInput ?? (customMapLoaded ? {
-          id: `${biome}_empty_layers`,
-          biome,
-          layers: [],
-          particleColor: [0.4, 1, 0.2],
-          particleCount: 0,
-          particleAlpha: [0.06, 0.2],
-      } as SceneLayerInput : undefined);
-      this._layerManager.buildLayers(biome, layerInputForBuild);
-      const activeLayerPreset = this._layerManager.getActivePreset();
-
-      // The PNG layer stack owns the cinematic shafts and foreground frame now.
-      // Re-adding the old procedural shafts here would double the haze over units.
-
-      // 3. SPAWNS: IMPORT JSON CUSTOM EDITOR OU ARÈNE VIDE (FIN DE LA GÉNÉRATION PROCÉDURALE)
+      // 3. LEGACY DECORATIONS (editor-exported 2D billboards) — kept for
+      // backwards compatibility with maps still authored via the old editor.
       if (customMapLoaded && mapData && mapData.decorations && mapData.decorations.length > 0) {
           console.log(`🗺️ Custom Editor map layout '${gmMode.mapFile}' built perfectly from JSON!`);
           const editorManifest = await this.loadEditorManifest();
@@ -594,13 +567,12 @@ export class CombatScene {
       } else {
           console.log(`🌲 No custom mapFile specified. Spawning pure combat grid purely.`);
       }
-      
-      // 4. MAGICAL FIREFLIES (Lucicles volantes - ambiance d'arène minimale)
-      // Legacy depth cards are skipped: the layer PNGs now provide scene depth.
 
-      const dustCount = activeLayerPreset.particleCount;
-      const [pr, pg, pb] = activeLayerPreset.particleColor;
-      const [alphaMin, alphaMax] = activeLayerPreset.particleAlpha;
+      // 4. AMBIENT PARTICLES (fireflies / dust motes) driven by scenery.ambient.
+      const ambient = sceneryConfig.ambient ?? { color: [0.4, 1, 0.2], count: 22, alpha: [0.08, 0.26] };
+      const dustCount = ambient.count;
+      const [pr, pg, pb] = ambient.color;
+      const [alphaMin, alphaMax] = ambient.alpha;
       const fireflyTex = new DynamicTexture('combatFireflyGlowTex', { width: 64, height: 64 }, this._scene, false);
       fireflyTex.hasAlpha = true;
       const fireflyCtx = fireflyTex.getContext() as CanvasRenderingContext2D;
@@ -658,6 +630,40 @@ export class CombatScene {
           });
           this._sceneryObservers.push(dustObserver);
       }
+  }
+
+  /**
+   * Wires the camera-dependent half of the diorama scenery :
+   * - SceneBackdropManager (needs camera FOV + position)
+   * - SceneProps3DManager  (places .glb / primitive props)
+   * - ScenePostFX          (reconfigures the active rendering pipeline)
+   *
+   * Also subscribes to `TacticalCamera.onModeChanged` so the focus/idle
+   * cinematic post-FX ramp follows mode transitions automatically.
+   */
+  private setupSceneryWithCamera(): void {
+      if (!this._activeScenery || !this._currentSceneryRoot || !this._camera) return;
+
+      this._backdrop?.dispose();
+      this._props3D?.dispose();
+      this._postFX?.dispose();
+
+      this._backdrop = new SceneBackdropManager(
+          this._scene,
+          this._currentSceneryRoot,
+          this._camera.babylonCamera,
+      );
+      this._backdrop.setup(this._activeScenery.backdrop);
+
+      this._props3D = new SceneProps3DManager(this._scene, this._currentSceneryRoot);
+      void this._props3D.placeProps(this._activeScenery.props);
+
+      this._postFX = new ScenePostFX(this._scene, this._camera.babylonCamera);
+      this._postFX.setup(this._activeScenery.postFX, this._renderingPipeline ?? undefined);
+
+      this._camera.onModeChanged = (mode) => {
+          this._postFX?.setCinematicMode(mode === CameraMode.Focus);
+      };
   }
 
   private buildStageGroundAccent(
