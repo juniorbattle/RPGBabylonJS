@@ -99,7 +99,7 @@ export class AOESystem {
     //    pool, not just a contour.
     //  - rangeTexture : hollow contour ring, used by matRange to mark the
     //    caster's max reach without obscuring everything inside.
-    this.discTexture = this.createSoftCircleTexture('aoe_soft_disc_texture', 0.82, 0.22);
+    this.discTexture = this.createSoftCircleTexture('aoe_soft_disc_texture', 0.95, 0.40);
     this.rangeTexture = this.createSoftRingTexture('aoe_soft_ring_texture');
 
     // Damage AOE — semi-transparent red
@@ -109,7 +109,7 @@ export class AOESystem {
     this.matValid.useAlphaFromDiffuseTexture = true;
     this.matValid.diffuseColor   = new Color3(1.0, 0.15, 0.10);
     this.matValid.emissiveColor  = new Color3(0.64, 0.10, 0.06);
-    this.matValid.alpha          = 0.38;
+    this.matValid.alpha          = 0.65;
     this.matValid.backFaceCulling= false;
     this.configureOverlayMaterial(this.matValid, -8);
 
@@ -120,7 +120,7 @@ export class AOESystem {
     this.matHeal.useAlphaFromDiffuseTexture = true;
     this.matHeal.diffuseColor    = new Color3(0.10, 0.90, 0.35);
     this.matHeal.emissiveColor   = new Color3(0.06, 0.54, 0.22);
-    this.matHeal.alpha           = 0.36;
+    this.matHeal.alpha           = 0.60;
     this.matHeal.backFaceCulling = false;
     this.configureOverlayMaterial(this.matHeal, -8);
 
@@ -131,7 +131,7 @@ export class AOESystem {
     this.matInvalid.useAlphaFromDiffuseTexture = true;
     this.matInvalid.diffuseColor   = new Color3(0.48, 0.50, 0.52);
     this.matInvalid.emissiveColor  = new Color3(0.12, 0.12, 0.12);
-    this.matInvalid.alpha          = 0.24;
+    this.matInvalid.alpha          = 0.42;
     this.matInvalid.backFaceCulling= false;
     this.configureOverlayMaterial(this.matInvalid, -8);
 
