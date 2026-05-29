@@ -544,7 +544,10 @@ export class CombatScene {
       case CameraMode.Normal:
       default:
         // Baseline frontal play view — mild DOF on backdrop, moderate vignette.
-        vignetteWeight  = 1.72;
+        // Vignette weight loosened (1.72 -> 1.45) so the god-ray brightness
+        // in the upper-corner zone (where vignette attenuates) stays above
+        // the bloom threshold (0.58) for the warm halo to register.
+        vignetteWeight  = 1.45;
         dofFStop        = post.dofFStop;
         dofFocalLength  = post.dofFocalLength;
         dofLensSize     = post.dofLensSize;
@@ -1016,17 +1019,19 @@ export class CombatScene {
       // right ; we lean the tops to +X by ~14° to read as "coming from
       // the sun"). Slight yaw variation keeps them from looking stamped.
       const shafts: Array<{ x: number; y: number; z: number; w: number; yaw: number; roll: number; alpha: number; hero: boolean }> = [
-          // Y_center lowered so plane TOP (Y_center + height/2 * cos(pitch))
-          // lands INSIDE the Normal-mode frustum (top ~Y=14.3 at Z=18).
-          // With h=20 pitch=10°, plane top sits at Y_center + 9.85.
-          // → Y_center=1..4 means plane top at Y=10.85..13.85 ← all in-frame.
-          { x:  2, y: 1, z: 18, w: 3.0, yaw:  10, roll: -14, alpha: 0.78, hero: true  },
-          { x:  5, y: 2, z: 21, w: 1.6, yaw:  -6, roll: -12, alpha: 0.48, hero: false },
-          { x:  8, y: 3, z: 23, w: 2.0, yaw:   4, roll: -15, alpha: 0.56, hero: false },
-          { x: 11, y: 1, z: 18, w: 3.4, yaw:  -8, roll: -13, alpha: 0.85, hero: true  },
-          { x: 14, y: 3, z: 22, w: 1.7, yaw:   8, roll: -14, alpha: 0.50, hero: false },
-          { x: 17, y: 2, z: 19, w: 1.8, yaw:  -4, roll: -12, alpha: 0.46, hero: false },
-          { x:  9, y: 4, z: 13, w: 1.2, yaw:  12, roll: -16, alpha: 0.36, hero: false },
+          // Y_center tuned so plane TOP (Y_center + height/2 * cos(pitch))
+          // lands at screen Y ~10-15% (upper-mid frame, above plateau
+          // silhouette which projects to screen Y ~51%). With h=20 pitch=10°,
+          // plane top sits at Y_center + 9.85.
+          // → Y_center=4..6 → plane top at Y=13.85..15.85, upper one slightly
+          //   clipping frustum at 14.3 which is fine for bloom halo spillover.
+          { x:  2, y: 4, z: 18, w: 3.0, yaw:  10, roll: -14, alpha: 0.78, hero: true  },
+          { x:  5, y: 5, z: 21, w: 1.6, yaw:  -6, roll: -12, alpha: 0.48, hero: false },
+          { x:  8, y: 6, z: 23, w: 2.0, yaw:   4, roll: -15, alpha: 0.56, hero: false },
+          { x: 11, y: 4, z: 18, w: 3.4, yaw:  -8, roll: -13, alpha: 0.85, hero: true  },
+          { x: 14, y: 6, z: 22, w: 1.7, yaw:   8, roll: -14, alpha: 0.50, hero: false },
+          { x: 17, y: 5, z: 19, w: 1.8, yaw:  -4, roll: -12, alpha: 0.46, hero: false },
+          { x:  9, y: 7, z: 13, w: 1.2, yaw:  12, roll: -16, alpha: 0.36, hero: false },
       ];
 
       shafts.forEach((s, i) => {
