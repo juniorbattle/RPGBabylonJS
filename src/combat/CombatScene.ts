@@ -1016,24 +1016,25 @@ export class CombatScene {
       // right ; we lean the tops to +X by ~14° to read as "coming from
       // the sun"). Slight yaw variation keeps them from looking stamped.
       const shafts: Array<{ x: number; y: number; z: number; w: number; yaw: number; roll: number; alpha: number; hero: boolean }> = [
-          { x:  2, y: 5, z: 18, w: 1.8, yaw:  10, roll: -14, alpha: 0.55, hero: true  },
-          { x:  5, y: 6, z: 21, w: 1.0, yaw:  -6, roll: -12, alpha: 0.30, hero: false },
-          { x:  8, y: 7, z: 23, w: 1.3, yaw:   4, roll: -15, alpha: 0.36, hero: false },
-          { x: 11, y: 5, z: 18, w: 2.0, yaw:  -8, roll: -13, alpha: 0.62, hero: true  },
-          { x: 14, y: 7, z: 22, w: 1.1, yaw:   8, roll: -14, alpha: 0.32, hero: false },
-          { x: 17, y: 6, z: 19, w: 1.2, yaw:  -4, roll: -12, alpha: 0.30, hero: false },
-          { x:  9, y: 8, z: 13, w: 0.8, yaw:  12, roll: -16, alpha: 0.22, hero: false },
+          { x:  2, y: 5, z: 18, w: 3.0, yaw:  10, roll: -14, alpha: 0.78, hero: true  },
+          { x:  5, y: 6, z: 21, w: 1.6, yaw:  -6, roll: -12, alpha: 0.48, hero: false },
+          { x:  8, y: 7, z: 23, w: 2.0, yaw:   4, roll: -15, alpha: 0.56, hero: false },
+          { x: 11, y: 5, z: 18, w: 3.4, yaw:  -8, roll: -13, alpha: 0.85, hero: true  },
+          { x: 14, y: 7, z: 22, w: 1.7, yaw:   8, roll: -14, alpha: 0.50, hero: false },
+          { x: 17, y: 6, z: 19, w: 1.8, yaw:  -4, roll: -12, alpha: 0.46, hero: false },
+          { x:  9, y: 8, z: 13, w: 1.2, yaw:  12, roll: -16, alpha: 0.36, hero: false },
       ];
 
       shafts.forEach((s, i) => {
           const shaftMat = mat.clone(`godRayMat_${i}`);
           shaftMat.alpha = s.alpha;
-          // Hero beams get a noticeably warmer, brighter emissive so they
-          // bloom harder ; secondaries are still warm but more subtle.
+          // Hero beams get a saturated warm emissive that punches above the
+          // bloom threshold (0.58) — bright enough to register as a true
+          // pillar of light. Secondaries stay warm but a notch softer.
           if (s.hero) {
-              shaftMat.emissiveColor = new Color3(1.22, 1.02, 0.62);
+              shaftMat.emissiveColor = new Color3(1.55, 1.25, 0.72);
           } else {
-              shaftMat.emissiveColor = new Color3(1.05, 0.88, 0.52);
+              shaftMat.emissiveColor = new Color3(1.18, 0.98, 0.58);
           }
           const plane = MeshBuilder.CreatePlane(`godRay_${i}`, { width: s.w, height: 24 }, this._scene);
           plane.material = shaftMat;
