@@ -1075,13 +1075,21 @@ export class CombatScene {
           //   units above frustum top. Visible texture U-range starts at
           //   ~0.08 (alpha 0.83) instead of ~0.31 (alpha 0.54) under the
           //   broken math -- the bright cap is now finally in the frame.
-          { x:  2, y: 2, z: 18, w: 3.0, yaw:  10, roll: -14, alpha: 0.78, hero: true  },
-          { x:  5, y: 3, z: 21, w: 1.6, yaw:  -6, roll: -12, alpha: 0.48, hero: false },
-          { x:  8, y: 4, z: 23, w: 2.0, yaw:   4, roll: -15, alpha: 0.56, hero: false },
-          { x: 11, y: 2, z: 18, w: 3.4, yaw:  -8, roll: -13, alpha: 0.85, hero: true  },
-          { x: 14, y: 4, z: 22, w: 1.7, yaw:   8, roll: -14, alpha: 0.50, hero: false },
-          { x: 17, y: 3, z: 19, w: 1.8, yaw:  -4, roll: -12, alpha: 0.46, hero: false },
-          { x:  9, y: 3, z: 13, w: 1.2, yaw:  12, roll: -16, alpha: 0.36, hero: false },
+          // ROLL : the previous -12..-16° roll values were the actual root
+          // cause of the "rays render as orbs not pillars" symptom. Roll
+          // tilts the local +Y axis of the plane in world space, making the
+          // top edge a SLOPED line that intersects the horizontal frustum
+          // top in only a small triangular sliver near one corner. Bloom
+          // kernel turned that sliver into a glowing orb. roll=0 keeps
+          // the top edge horizontal so the bright U=0..0.08 band spans the
+          // full plane width and reads as a TRUE vertical pillar.
+          { x:  2, y: 2, z: 18, w: 3.0, yaw:  10, roll: 0, alpha: 0.78, hero: true  },
+          { x:  5, y: 3, z: 21, w: 1.6, yaw:  -6, roll: 0, alpha: 0.48, hero: false },
+          { x:  8, y: 4, z: 23, w: 2.0, yaw:   4, roll: 0, alpha: 0.56, hero: false },
+          { x: 11, y: 2, z: 18, w: 3.4, yaw:  -8, roll: 0, alpha: 0.85, hero: true  },
+          { x: 14, y: 4, z: 22, w: 1.7, yaw:   8, roll: 0, alpha: 0.50, hero: false },
+          { x: 17, y: 3, z: 19, w: 1.8, yaw:  -4, roll: 0, alpha: 0.46, hero: false },
+          { x:  9, y: 3, z: 13, w: 1.2, yaw:  12, roll: 0, alpha: 0.36, hero: false },
       ];
 
       // DIAGNOSTIC Lot 2.11 — push heroes to extreme brightness to verify
