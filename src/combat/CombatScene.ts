@@ -1052,7 +1052,13 @@ export class CombatScene {
       sun.renderingGroupId = 0;
 
       const sunMat = new StandardMaterial('sunEmitterMat', this._scene);
-      sunMat.emissiveColor = new Color3(1.0, 0.92, 0.65);   // warm cream
+      // HDR emissive : drives the scatter source brightness. Lot 3.0 used
+      // LDR (1.0, 0.92, 0.65) and the rays were invisible — the scatter
+      // post-process samples the rendered framebuffer at the sun's screen
+      // position, so the sun pixels need to be > 1.0 to push real intensity
+      // into the radial blur. (3.0, 2.8, 2.0) gives a strong warm-cream
+      // source without blowing out into pure white.
+      sunMat.emissiveColor = new Color3(3.0, 2.8, 2.0);
       sunMat.diffuseColor = Color3.Black();
       sunMat.specularColor = Color3.Black();
       sunMat.disableLighting = true;
@@ -1070,15 +1076,18 @@ export class CombatScene {
           false,                            // not reusable
       );
 
-      // HD-2D tuning — long warm rays, dramatic but not blown out :
+      // HD-2D classique tuning — dramatic warm rays without being blown
+      // out. Lot 3.0 values (0.38 / 0.965 / 0.50 / 0.92) were too conserva-
+      // tive : the sun was visible but no rays emerged. These cranked
+      // values target the Octopath / Triangle Strategy aesthetic :
       //   exposure : final brightness multiplier of the scatter contribution
       //   decay    : per-step falloff along each ray (higher = longer rays)
       //   weight   : per-sample contribution (intensity)
       //   density  : how tightly samples pack near the sun (lower = wider rays)
-      pp.exposure = 0.38;
-      pp.decay    = 0.965;
-      pp.weight   = 0.50;
-      pp.density  = 0.92;
+      pp.exposure = 1.00;   // was 0.38 — Lot 3.0 rays were invisible
+      pp.decay    = 0.970;  // was 0.965 — slightly longer rays
+      pp.weight   = 0.85;   // was 0.50  — stronger per-sample punch
+      pp.density  = 0.85;   // was 0.92  — wider spread, less concentrated
 
       this._sunEmitter = sun;
       this._godRayPP   = pp;
