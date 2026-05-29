@@ -454,15 +454,19 @@ export class CombatScene {
     this._renderingPipeline.imageProcessing.vignetteStretch = 0.62;
     this._renderingPipeline.imageProcessing.vignetteColor = new Color4(0.012, 0.026, 0.016, 1.0);
 
-    // 3. Bloom (soft)
+    // 3. Bloom (soft, painterly) — kernel widened so the warm god rays
+    //    and jade rim glow read as a true halo instead of a sharp ring.
     this._renderingPipeline.bloomEnabled = true;
     this._renderingPipeline.bloomThreshold = preset.post.bloomThreshold;
     this._renderingPipeline.bloomWeight = preset.post.bloomWeight;
-    this._renderingPipeline.bloomKernel = 58;
+    this._renderingPipeline.bloomKernel = 72;
 
+    // Animated grain : subtle film texture that glues the procedural
+    // backdrop and the 3D stage together. Intensity tuned per camera
+    // mode by applyPerModePostFX.
     this._renderingPipeline.grainEnabled = true;
-    this._renderingPipeline.grain.intensity = 5.5;
-    this._renderingPipeline.grain.animated = false;
+    this._renderingPipeline.grain.intensity = 4.5;
+    this._renderingPipeline.grain.animated = true;
 
     // 4. HD-2D TILT-SHIFT (DEPTH OF FIELD VERY AGGRESSIVE)
     this._renderingPipeline.depthOfFieldEnabled = true;
@@ -484,6 +488,77 @@ export class CombatScene {
         const distance = Vector3.Distance(this._camera.babylonCamera.position, camTarget);
         this._renderingPipeline.depthOfField.focusDistance = distance * 1000; 
     });
+
+    // Apply the initial per-mode profile (Normal). The TacticalCamera will
+    // flip to Overview on startCombat and re-trigger this via onModeChanged.
+    this.applyPerModePostFX(CameraMode.Normal);
+  }
+
+  /**
+   * Adjusts the post-FX baseline per active camera mode :
+   *  - Overview : tactical readability — light vignette, neutral DOF, mild grain.
+   *  - Normal   : baseline cinematic — standard vignette/DOF tuned per preset.
+   *  - Focus    : dramatic close-up — heavy vignette, shallow DOF, hotter grain.
+   *
+   * Called every time TacticalCamera flips mode (via onModeChanged) AND
+   * once at the end of setupPostProcessing for the initial frame. Independent
+   * from setCinematicPostMode() which is layered on top during attack/skill
+   * sequences.
+   */
+  private applyPerModePostFX(mode: CameraMode): void {
+    if (!this._renderingPipeline || !this._activeArtPreset) return;
+    const post = this._activeArtPreset.post;
+
+    let vignetteWeight: number;
+    let dofFStop: number;
+    let dofFocalLength: number;
+    let dofLensSize: number;
+    let grain: number;
+    let contrastAdj = 0;
+    let exposureMul = 1.0;
+
+    switch (mode) {
+      case CameraMode.Overview:
+        // Tactical view : pull back the cinematic effects so the grid
+        // stays crisp and readable from the high tilt.
+        vignetteWeight  = 1.22;
+        dofFStop        = 6.0;
+        dofFocalLength  = 26;
+        dofLensSize     = 18;
+        grain           = 3.5;
+        break;
+
+      case CameraMode.Focus:
+        // Cinematic close-up : push everything for the drama. The aggressive
+        // shallow DOF + heavy vignette + hot grain reads as the signature
+        // HD-2D attack closeup.
+        vignetteWeight  = 1.95;
+        dofFStop        = 1.10;
+        dofFocalLength  = 62;
+        dofLensSize     = 58;
+        grain           = 6.5;
+        contrastAdj     = 0.06;
+        exposureMul     = 0.94;
+        break;
+
+      case CameraMode.Normal:
+      default:
+        // Baseline frontal play view — mild DOF on backdrop, moderate vignette.
+        vignetteWeight  = 1.72;
+        dofFStop        = post.dofFStop;
+        dofFocalLength  = post.dofFocalLength;
+        dofLensSize     = post.dofLensSize;
+        grain           = 4.5;
+        break;
+    }
+
+    this._renderingPipeline.imageProcessing.contrast = post.contrast + contrastAdj;
+    this._renderingPipeline.imageProcessing.exposure = post.exposure * exposureMul;
+    this._renderingPipeline.imageProcessing.vignetteWeight = vignetteWeight;
+    this._renderingPipeline.depthOfField.fStop = dofFStop;
+    this._renderingPipeline.depthOfField.focalLength = dofFocalLength;
+    this._renderingPipeline.depthOfField.lensSize = dofLensSize;
+    this._renderingPipeline.grain.intensity = grain;
   }
 
   private registerCinematicOccluder(material: StandardMaterial, cinematicAlpha: number): void {
@@ -889,6 +964,7 @@ export class CombatScene {
       }
 
       this._camera.onModeChanged = (mode) => {
+          this.applyPerModePostFX(mode);
           this._postFX?.setCinematicMode(mode === CameraMode.Focus);
       };
   }

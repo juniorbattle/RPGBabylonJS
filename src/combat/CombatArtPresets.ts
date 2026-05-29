@@ -90,8 +90,8 @@ const FOREST_STAGE: CombatArtPreset = {
   post: {
     contrast: 1.14,
     exposure: 0.88,
-    bloomThreshold: 0.72,
-    bloomWeight: 0.32,
+    bloomThreshold: 0.58,
+    bloomWeight: 0.42,
     dofFStop: 1.35,
     dofFocalLength: 54,
     dofLensSize: 48,
