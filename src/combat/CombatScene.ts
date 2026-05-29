@@ -6,8 +6,8 @@
 
 import {
   Engine, Scene, HemisphericLight, DirectionalLight, SpotLight,
-  Vector3, TransformNode, MeshBuilder, StandardMaterial, Color3, Color4,
-  DefaultRenderingPipeline, Texture, DynamicTexture
+  Vector3, TransformNode, MeshBuilder, Mesh, StandardMaterial, Color3, Color4,
+  DefaultRenderingPipeline, Texture, DynamicTexture, VolumetricLightScatteringPostProcess
 } from '@babylonjs/core';
 
 import { CombatGrid, GridConfig }                          from './CombatGrid';
@@ -131,6 +131,10 @@ export class CombatScene {
   private _diorama: SceneDioramaManager | null = null;
   private _postFX: ScenePostFX | null = null;
   private _activeScenery: SceneryConfig | null = null;
+
+  // Volumetric god rays (HD-2D screen-space scatter post-process).
+  private _godRayPP: VolumetricLightScatteringPostProcess | null = null;
+  private _sunEmitter: Mesh | null = null;
 
   constructor(scene: Scene, _canvas: HTMLCanvasElement, engine: Engine) {
     this._scene = scene;
@@ -316,6 +320,7 @@ export class CombatScene {
     this._props3D = null;
     this._diorama?.dispose();
     this._diorama = null;
+    this.disposeVolumetricLight();
     this._postFX?.dispose();
     this._postFX = null;
     this._activeScenery = null;
@@ -999,11 +1004,12 @@ export class CombatScene {
       this._scene.fogColor = new Color3(0.035, 0.095, 0.075);
       this._scene.fogDensity = 0.016;
 
-      // God rays : five oblique shafts of light coming down-right, parented
-      // to the scenery root so endCombat sweeps them away. Skipped when a
-      // diorama supplies its own painted light shafts.
+      // God rays : Babylon's built-in volumetric light scattering post-process,
+      // which performs a radial blur in screen space from the sun emitter mesh.
+      // Replaces the failed homemade transparent-plane approach. Skipped when
+      // a diorama supplies its own painted light shafts.
       if (!skipGodRays) {
-          this.buildGodRays();
+          this.setupVolumetricLight();
       }
 
       this._camera.onModeChanged = (mode) => {
@@ -1013,168 +1019,90 @@ export class CombatScene {
   }
 
   /**
-   * Creates a handful of additive translucent planes faking volumetric
-   * "shafts of light" cutting through the forest canopy. Each shaft uses a
-   * procedural texture with a vertical gradient (opaque at the top, fading
-   * to transparent at the bottom) plus soft horizontal edges so the planes
-   * read as real beams rather than rectangular billboards. The warm tint
-   * gets picked up by post-FX bloom for the volumetric illusion at zero
-   * shader cost.
+   * Sets up Babylon's VolumetricLightScatteringPostProcess for HD-2D-style
+   * volumetric god rays. The post-process performs a radial blur in screen
+   * space starting from the projected screen position of the sun emitter
+   * mesh. Any opaque mesh between the sun and the camera creates a
+   * silhouette that blocks the rays, producing the dramatic "rays passing
+   * around obstacles" effect seen in Octopath / Triangle Strategy.
+   *
+   * Replaces the previous homemade transparent-plane approach (Lots 2.5
+   * through 2.12) which failed due to compounding issues : frustum
+   * clipping, YXZ rotation matrices, depth occlusion, fog/DOF/bloom
+   * interaction. Built-in VLSP eliminates all of these by working entirely
+   * in screen space after the main render pass.
    */
-  private buildGodRays(): void {
-      // DIAG Lot 2.11 : confirm function is called and parent root is valid.
-      console.log('[buildGodRays] called', {
-          sceneryRoot: this._currentSceneryRoot?.name,
-          sceneryRootDisposed: this._currentSceneryRoot?.isDisposed?.(),
-      });
-      if (!this._currentSceneryRoot) return;
+  private setupVolumetricLight(): void {
+      if (!this._scene || !this._camera || !this._currentSceneryRoot) return;
+      this.disposeVolumetricLight();
 
-      const root = new TransformNode('godRaysRoot', this._scene);
-      root.parent = this._currentSceneryRoot;
+      // Sun emitter — a bright sphere placed upper-right, behind the plateau,
+      // just above the frame top so its rays angle down-left into the scene.
+      // Camera at (0, 6.2, -17) with 25° FOV : (15, 16, 28) puts the sun
+      // disk at roughly screen (78%, 5%) — upper-right corner, with rays
+      // streaming down through the back-row enemies and the plateau.
+      const sun = MeshBuilder.CreateSphere(
+          'sunEmitter',
+          { diameter: 5, segments: 16 },
+          this._scene,
+      );
+      sun.position.set(15, 16, 28);
+      sun.parent = this._currentSceneryRoot;
+      sun.isPickable = false;
+      sun.renderingGroupId = 0;
 
-      const beamTex = this.createGodRayTexture();
-      const mat = new StandardMaterial('godRayMat', this._scene);
-      mat.diffuseTexture = beamTex;
-      mat.opacityTexture = beamTex;
-      mat.useAlphaFromDiffuseTexture = true;
-      mat.emissiveColor = new Color3(0.95, 0.78, 0.45);   // warm amber, less saturated
-      mat.diffuseColor = new Color3(0, 0, 0);
-      mat.specularColor = new Color3(0, 0, 0);
-      mat.disableLighting = true;
-      mat.backFaceCulling = false;
-      mat.alphaMode = 1;                                   // ADD blend
-      mat.disableDepthWrite = true;
-      mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+      const sunMat = new StandardMaterial('sunEmitterMat', this._scene);
+      sunMat.emissiveColor = new Color3(1.0, 0.92, 0.65);   // warm cream
+      sunMat.diffuseColor = Color3.Black();
+      sunMat.specularColor = Color3.Black();
+      sunMat.disableLighting = true;
+      sun.material = sunMat;
 
-      // Seven shafts placed BEHIND the plateau (Z=18..23) so they read as
-      // atmospheric depth in the frontal Focus/Normal frames. Heights kept
-      // SHORT (24) and Y_center LOW (5..8) so the brightest band of the
-      // vertical gradient (top of texture, alpha 0.92) actually sits inside
-      // the camera frustum — the previous Y=16, h=42 layout pushed the
-      // bright cap to world Y~37 (well above the Normal-mode frame top
-      // ~Y=10 at Z=20), so only the dim tail was visible and got crushed
-      // by the deep teal fog.
-      //
-      // Two "hero" beams (idx 0 & 3) carry the bulk of the glow ; the rest
-      // are secondaries that thicken the haze. One mid-stage filler at
-      // Z=13 catches the back row of combatants in Focus close-ups.
-      //
-      // All beams share a consistent roll toward the sun source (the sun
-      // light travels (-0.8,-1.2,+0.6), so the source sits camera-upper-
-      // right ; we lean the tops to +X by ~14° to read as "coming from
-      // the sun"). Slight yaw variation keeps them from looking stamped.
-      const shafts: Array<{ x: number; y: number; z: number; w: number; yaw: number; roll: number; alpha: number; hero: boolean }> = [
-          // Y_center tuned for the ACTUAL camera FOV = 25° (not the 46° I
-          // had been assuming in Lot 2.5..2.8 -- TacticalCamera.ts default
-          // fieldOfView = 25, baseFOV clamped ≤27). With camera (0, 6.2, -17)
-          // tilt 10° and FOV 25°, the frustum-top slope is V_y/V_z = 0.0439,
-          // so at Z=18 (V_z=35) the frustum top sits at world Y=7.74, NOT
-          // Y=14.3 as the bad math claimed. With h=14 pitch=10°, plane top
-          // is at Y_center + 7*cos(10°) = Y_center + 6.89.
-          // → Y_center=2..4 → plane top at Y=8.89..10.89, just at or 1-3
-          //   units above frustum top. Visible texture U-range starts at
-          //   ~0.08 (alpha 0.83) instead of ~0.31 (alpha 0.54) under the
-          //   broken math -- the bright cap is now finally in the frame.
-          // ROLL : the previous -12..-16° roll values were the actual root
-          // cause of the "rays render as orbs not pillars" symptom. Roll
-          // tilts the local +Y axis of the plane in world space, making the
-          // top edge a SLOPED line that intersects the horizontal frustum
-          // top in only a small triangular sliver near one corner. Bloom
-          // kernel turned that sliver into a glowing orb. roll=0 keeps
-          // the top edge horizontal so the bright U=0..0.08 band spans the
-          // full plane width and reads as a TRUE vertical pillar.
-          { x:  2, y: 2, z: 18, w: 3.0, yaw:  10, roll: 0, alpha: 0.78, hero: true  },
-          { x:  5, y: 3, z: 21, w: 1.6, yaw:  -6, roll: 0, alpha: 0.48, hero: false },
-          { x:  8, y: 4, z: 23, w: 2.0, yaw:   4, roll: 0, alpha: 0.56, hero: false },
-          { x: 11, y: 2, z: 18, w: 3.4, yaw:  -8, roll: 0, alpha: 0.85, hero: true  },
-          { x: 14, y: 4, z: 22, w: 1.7, yaw:   8, roll: 0, alpha: 0.50, hero: false },
-          { x: 17, y: 3, z: 19, w: 1.8, yaw:  -4, roll: 0, alpha: 0.46, hero: false },
-          { x:  9, y: 3, z: 13, w: 1.2, yaw:  12, roll: 0, alpha: 0.36, hero: false },
-      ];
+      // The post-process. 100 samples = HD-2D quality (smooth rays, decent perf).
+      const pp = new VolumetricLightScatteringPostProcess(
+          'godRayScatter',
+          1.0,                              // full-res scatter pass
+          this._camera.babylonCamera,
+          sun,                              // emitter mesh
+          100,                              // sample count along each ray
+          Texture.BILINEAR_SAMPLINGMODE,
+          this._engine,
+          false,                            // not reusable
+      );
 
-      // DIAGNOSTIC Lot 2.11 — push heroes to extreme brightness to verify
-      // the rays are rendering at all. If the upper frame still shows zero
-      // warm pillars at emissive (4, 3, 1.5) + alpha 0.99, we have a
-      // fundamental rendering bug (mesh culling, wrong parent, depth-test
-      // issue, etc.) not a post-FX issue. Dial back after confirmation.
-      shafts.forEach((s, i) => {
-          const shaftMat = mat.clone(`godRayMat_${i}`);
-          shaftMat.alpha = s.hero ? 0.99 : s.alpha;
-          // Hero beams get a saturated warm emissive that punches above the
-          // bloom threshold (0.58) — bright enough to register as a true
-          // pillar of light. Secondaries stay warm but a notch softer.
-          if (s.hero) {
-              shaftMat.emissiveColor = new Color3(4.0, 3.0, 1.5); // DIAG : 2.5x normal
-          } else {
-              shaftMat.emissiveColor = new Color3(1.18, 0.98, 0.58);
-          }
-          const plane = MeshBuilder.CreatePlane(`godRay_${i}`, { width: s.w, height: 14 }, this._scene);
-          plane.material = shaftMat;
-          plane.parent = root;
-          plane.position.set(s.x, s.y, s.z);
-          plane.rotation.set(
-              (10 * Math.PI) / 180,           // pitch slightly forward
-              (s.yaw * Math.PI) / 180,        // yaw for slight spread
-              (s.roll * Math.PI) / 180,       // consistent lean toward sun
-          );
-          plane.isPickable = false;
-          plane.renderingGroupId = 0;
-          plane.alwaysSelectAsActiveMesh = true;
-          // DIAG Lot 2.11 : log first ray creation to verify the function is
-          // actually called and the plane is parented + positioned correctly.
-          if (i === 0 || s.hero) {
-              console.log(`[godRay #${i}]`, {
-                  pos: `(${s.x}, ${s.y}, ${s.z})`,
-                  w: s.w,
-                  hero: s.hero,
-                  matAlpha: shaftMat.alpha,
-                  emissive: shaftMat.emissiveColor.toString(),
-                  rootParent: root.parent?.name,
-                  meshVisible: plane.isVisible,
-                  meshEnabled: plane.isEnabled(),
-              });
-          }
-      });
+      // HD-2D tuning — long warm rays, dramatic but not blown out :
+      //   exposure : final brightness multiplier of the scatter contribution
+      //   decay    : per-step falloff along each ray (higher = longer rays)
+      //   weight   : per-sample contribution (intensity)
+      //   density  : how tightly samples pack near the sun (lower = wider rays)
+      pp.exposure = 0.38;
+      pp.decay    = 0.965;
+      pp.weight   = 0.50;
+      pp.density  = 0.92;
 
-      mat.dispose();  // base mat is no longer needed (we cloned per-shaft).
+      this._sunEmitter = sun;
+      this._godRayPP   = pp;
   }
 
   /**
-   * Builds a one-shot procedural texture for the god-ray quads : opaque
-   * white at the top, fading to fully transparent at the bottom, with
-   * softened horizontal edges so the plane silhouettes do not show as
-   * sharp rectangles. Tinted at draw time via material.emissiveColor.
+   * Tears down the volumetric god rays post-process and the sun emitter
+   * mesh. Called from endCombat and from setupVolumetricLight before a
+   * fresh build so we never leak post-processes between combats.
    */
-  private createGodRayTexture(): DynamicTexture {
-      const tex = new DynamicTexture('godRayBeamTex', { width: 64, height: 256 }, this._scene, false);
-      tex.hasAlpha = true;
-      const ctx = tex.getContext() as CanvasRenderingContext2D;
-      ctx.clearRect(0, 0, 64, 256);
-
-      // Vertical body : strong opacity at the top, fade to zero at the
-      // bottom. Multiple stops give a non-linear "shaft" feel.
-      const vGrad = ctx.createLinearGradient(0, 0, 0, 256);
-      vGrad.addColorStop(0.00, 'rgba(255,255,255,0.92)');
-      vGrad.addColorStop(0.30, 'rgba(255,255,255,0.55)');
-      vGrad.addColorStop(0.65, 'rgba(255,255,255,0.20)');
-      vGrad.addColorStop(1.00, 'rgba(255,255,255,0.00)');
-      ctx.fillStyle = vGrad;
-      ctx.fillRect(0, 0, 64, 256);
-
-      // Horizontal soft-edge mask : multiply the body by a centre-bright
-      // radial-ish gradient so the side edges fade out cleanly.
-      const hGrad = ctx.createLinearGradient(0, 0, 64, 0);
-      hGrad.addColorStop(0.00, 'rgba(0,0,0,1.00)');
-      hGrad.addColorStop(0.20, 'rgba(0,0,0,0.00)');
-      hGrad.addColorStop(0.80, 'rgba(0,0,0,0.00)');
-      hGrad.addColorStop(1.00, 'rgba(0,0,0,1.00)');
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.fillStyle = hGrad;
-      ctx.fillRect(0, 0, 64, 256);
-      ctx.globalCompositeOperation = 'source-over';
-
-      tex.update(false);
-      return tex;
+  private disposeVolumetricLight(): void {
+      if (this._godRayPP) {
+          // If the camera is still alive we detach explicitly. If it has
+          // already been disposed, the post-process was cleaned up by the
+          // camera's own dispose chain and we just drop our reference.
+          if (this._camera?.babylonCamera) {
+              this._godRayPP.dispose(this._camera.babylonCamera);
+          }
+          this._godRayPP = null;
+      }
+      if (this._sunEmitter) {
+          this._sunEmitter.dispose();
+          this._sunEmitter = null;
+      }
   }
 
   private buildStageGroundAccent(
