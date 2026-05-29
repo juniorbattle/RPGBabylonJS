@@ -176,7 +176,7 @@ export class CombatGrid {
       mat.specularColor = palette.specular;
       mat.specularPower = 8;
       mat.emissiveColor = this.mixColors(palette.glow, tone, 0.08);
-      mat.alpha = type === TileType.Water ? 0.86 : (stageLayeredBackdrop ? 0.42 : 0.98);
+      mat.alpha = type === TileType.Water ? 0.86 : (stageLayeredBackdrop ? 0.82 : 0.98);
       mat.backFaceCulling = false;
       if (stageLayeredBackdrop) {
         mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
@@ -549,8 +549,8 @@ export class CombatGrid {
         }
         // FaceColor to slightly darken the sides artificially compared to the top
         const palette = this.getBiomePalette(this.config.biome ?? 'forest', this.config.floorConfig);
-        const sideFaceAlpha = flat ? 0.34 : 0.75;
-        const topFaceAlpha = flat ? 0.70 : 1;
+        const sideFaceAlpha = flat ? 0.55 : 0.75;
+        const topFaceAlpha = flat ? 0.95 : 1;
         const sideFace = new Color4(palette.side.r, palette.side.g, palette.side.b, sideFaceAlpha);
         const topFace = new Color4(1, 1, 1, topFaceAlpha);
         const faceColors = [sideFace, sideFace, sideFace, sideFace, topFace, sideFace];
@@ -689,8 +689,8 @@ export class CombatGrid {
       textureSize * 0.72
     );
     mossEdge.addColorStop(0, 'rgba(0,0,0,0)');
-    mossEdge.addColorStop(0.70, 'rgba(26,50,18,0.13)');
-    mossEdge.addColorStop(1, 'rgba(10,27,10,0.35)');
+    mossEdge.addColorStop(0.70, 'rgba(40,66,32,0.07)');
+    mossEdge.addColorStop(1, 'rgba(24,42,24,0.16)');
     ctx.fillStyle = mossEdge;
     ctx.fillRect(0, 0, textureSize, textureSize);
 

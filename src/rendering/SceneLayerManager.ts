@@ -169,8 +169,9 @@ export class SceneLayerManager {
         );
         tex.hasAlpha = usesTextureAlpha;
         tex.getAlphaFromRGB = alphaKey === 'black' || alphaKey === 'luminance';
-        tex.wrapU = Texture.CLAMP_ADDRESSMODE;
-        tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+        const wrap = cfg.wrapMode === 'wrap' ? Texture.WRAP_ADDRESSMODE : Texture.CLAMP_ADDRESSMODE;
+        tex.wrapU = wrap;
+        tex.wrapV = wrap;
         tex.uScale = cfg.uvScaleX ?? 1;
         tex.vScale = cfg.uvScaleY ?? 1;
         tex.uOffset = cfg.uvOffsetX ?? 0;
@@ -306,6 +307,7 @@ export class SceneLayerManager {
             alphaKey: raw.alphaKey ?? 'texture',
             scrollSpeedX: raw.scrollSpeedX ?? 0,
             scrollSpeedY: raw.scrollSpeedY ?? 0,
+            wrapMode: raw.wrapMode,
             uvScaleX: raw.uvScaleX,
             uvScaleY: raw.uvScaleY,
             uvOffsetX: raw.uvOffsetX,

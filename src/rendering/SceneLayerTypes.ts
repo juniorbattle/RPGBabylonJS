@@ -4,6 +4,7 @@ export type SceneLayerBlendMode = 'alpha' | 'additive' | 'screen' | 'multiply';
 export type SceneLayerAlphaKey = 'none' | 'texture' | 'white' | 'black' | 'luminance' | 'magenta';
 export type SceneLayerCameraMode = 'front' | 'overview';
 export type SceneLayerStageFit = 'full-stage' | 'lower-stage' | 'foreground-frame' | 'fx-overlay';
+export type SceneLayerWrapMode = 'clamp' | 'wrap';
 
 export type SceneLayerCompositionRole =
     | 'backAtmosphere'
@@ -40,6 +41,7 @@ export interface SceneLayerAsset {
     alphaKey?: SceneLayerAlphaKey;
     scrollSpeedX?: number;
     scrollSpeedY?: number;
+    wrapMode?: SceneLayerWrapMode;
     uvScaleX?: number;
     uvScaleY?: number;
     uvOffsetX?: number;
