@@ -516,6 +516,18 @@ export class CombatScene {
     let grain: number;
     let contrastAdj = 0;
     let exposureMul = 1.0;
+    // Per-mode bloom — explicit override of whatever ScenePostFX.setup()
+    // left in the pipeline from the biome config. The forest biome sets
+    // bloom to threshold 0.70 / weight 0.55, which crushes the god-ray
+    // halos in Normal mode (pixel brightness ~1.02 → contribution
+    // = (1.02-0.70)^2 / 1.02 = 0.10 × 0.55 = +5% halo, barely visible).
+    // Normal mode wants aggressive bloom (low threshold, high weight) so
+    // the warm pillars halo across the upper portion of the frame ;
+    // Overview wants subtle bloom for tactical readability ; Focus pushes
+    // both for max cinematic drama in attack close-ups.
+    let bloomThreshold: number;
+    let bloomWeight: number;
+    let bloomKernel: number;
 
     switch (mode) {
       case CameraMode.Overview:
@@ -526,6 +538,9 @@ export class CombatScene {
         dofFocalLength  = 26;
         dofLensSize     = 18;
         grain           = 3.5;
+        bloomThreshold  = 0.65;
+        bloomWeight     = 0.40;
+        bloomKernel     = 64;
         break;
 
       case CameraMode.Focus:
@@ -539,6 +554,9 @@ export class CombatScene {
         grain           = 6.5;
         contrastAdj     = 0.06;
         exposureMul     = 0.94;
+        bloomThreshold  = 0.42;
+        bloomWeight     = 0.82;
+        bloomKernel     = 96;
         break;
 
       case CameraMode.Normal:
@@ -546,12 +564,22 @@ export class CombatScene {
         // Baseline frontal play view — mild DOF on backdrop, moderate vignette.
         // Vignette weight loosened (1.72 -> 1.45) so the god-ray brightness
         // in the upper-corner zone (where vignette attenuates) stays above
-        // the bloom threshold (0.58) for the warm halo to register.
+        // the bloom threshold for the warm halo to register.
         vignetteWeight  = 1.45;
         dofFStop        = post.dofFStop;
         dofFocalLength  = post.dofFocalLength;
         dofLensSize     = post.dofLensSize;
         grain           = 4.5;
+        // Bloom : threshold 0.46 (vs biome 0.70) ensures the bright cap
+        // visible portion of every god-ray contributes ; weight 0.72
+        // (vs 0.55) makes the halo visibly spread across the upper frame
+        // instead of barely tinting. Math : pixel brightness at hero ray
+        // visible peak ~0.80 (post-fog, post-additive) ; bloom contribution
+        // = (0.80 - 0.46)^2 / 0.80 = 0.144 ; × weight 0.72 = +10% halo.
+        // At threshold 0.70 it was 0% (peak below threshold) → no halo.
+        bloomThreshold  = 0.46;
+        bloomWeight     = 0.72;
+        bloomKernel     = 80;
         break;
     }
 
@@ -562,6 +590,9 @@ export class CombatScene {
     this._renderingPipeline.depthOfField.focalLength = dofFocalLength;
     this._renderingPipeline.depthOfField.lensSize = dofLensSize;
     this._renderingPipeline.grain.intensity = grain;
+    this._renderingPipeline.bloomThreshold = bloomThreshold;
+    this._renderingPipeline.bloomWeight = bloomWeight;
+    this._renderingPipeline.bloomKernel = bloomKernel;
   }
 
   private registerCinematicOccluder(material: StandardMaterial, cinematicAlpha: number): void {
@@ -1019,19 +1050,24 @@ export class CombatScene {
       // right ; we lean the tops to +X by ~14° to read as "coming from
       // the sun"). Slight yaw variation keeps them from looking stamped.
       const shafts: Array<{ x: number; y: number; z: number; w: number; yaw: number; roll: number; alpha: number; hero: boolean }> = [
-          // Y_center tuned so plane TOP (Y_center + height/2 * cos(pitch))
-          // lands at screen Y ~10-15% (upper-mid frame, above plateau
-          // silhouette which projects to screen Y ~51%). With h=20 pitch=10°,
-          // plane top sits at Y_center + 9.85.
-          // → Y_center=4..6 → plane top at Y=13.85..15.85, upper one slightly
-          //   clipping frustum at 14.3 which is fine for bloom halo spillover.
-          { x:  2, y: 4, z: 18, w: 3.0, yaw:  10, roll: -14, alpha: 0.78, hero: true  },
-          { x:  5, y: 5, z: 21, w: 1.6, yaw:  -6, roll: -12, alpha: 0.48, hero: false },
-          { x:  8, y: 6, z: 23, w: 2.0, yaw:   4, roll: -15, alpha: 0.56, hero: false },
-          { x: 11, y: 4, z: 18, w: 3.4, yaw:  -8, roll: -13, alpha: 0.85, hero: true  },
-          { x: 14, y: 6, z: 22, w: 1.7, yaw:   8, roll: -14, alpha: 0.50, hero: false },
-          { x: 17, y: 5, z: 19, w: 1.8, yaw:  -4, roll: -12, alpha: 0.46, hero: false },
-          { x:  9, y: 7, z: 13, w: 1.2, yaw:  12, roll: -16, alpha: 0.36, hero: false },
+          // Y_center tuned for the ACTUAL camera FOV = 25° (not the 46° I
+          // had been assuming in Lot 2.5..2.8 -- TacticalCamera.ts default
+          // fieldOfView = 25, baseFOV clamped ≤27). With camera (0, 6.2, -17)
+          // tilt 10° and FOV 25°, the frustum-top slope is V_y/V_z = 0.0439,
+          // so at Z=18 (V_z=35) the frustum top sits at world Y=7.74, NOT
+          // Y=14.3 as the bad math claimed. With h=14 pitch=10°, plane top
+          // is at Y_center + 7*cos(10°) = Y_center + 6.89.
+          // → Y_center=2..4 → plane top at Y=8.89..10.89, just at or 1-3
+          //   units above frustum top. Visible texture U-range starts at
+          //   ~0.08 (alpha 0.83) instead of ~0.31 (alpha 0.54) under the
+          //   broken math -- the bright cap is now finally in the frame.
+          { x:  2, y: 2, z: 18, w: 3.0, yaw:  10, roll: -14, alpha: 0.78, hero: true  },
+          { x:  5, y: 3, z: 21, w: 1.6, yaw:  -6, roll: -12, alpha: 0.48, hero: false },
+          { x:  8, y: 4, z: 23, w: 2.0, yaw:   4, roll: -15, alpha: 0.56, hero: false },
+          { x: 11, y: 2, z: 18, w: 3.4, yaw:  -8, roll: -13, alpha: 0.85, hero: true  },
+          { x: 14, y: 4, z: 22, w: 1.7, yaw:   8, roll: -14, alpha: 0.50, hero: false },
+          { x: 17, y: 3, z: 19, w: 1.8, yaw:  -4, roll: -12, alpha: 0.46, hero: false },
+          { x:  9, y: 3, z: 13, w: 1.2, yaw:  12, roll: -16, alpha: 0.36, hero: false },
       ];
 
       shafts.forEach((s, i) => {
@@ -1045,7 +1081,7 @@ export class CombatScene {
           } else {
               shaftMat.emissiveColor = new Color3(1.18, 0.98, 0.58);
           }
-          const plane = MeshBuilder.CreatePlane(`godRay_${i}`, { width: s.w, height: 20 }, this._scene);
+          const plane = MeshBuilder.CreatePlane(`godRay_${i}`, { width: s.w, height: 14 }, this._scene);
           plane.material = shaftMat;
           plane.parent = root;
           plane.position.set(s.x, s.y, s.z);
