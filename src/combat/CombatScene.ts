@@ -6,7 +6,7 @@
 
 import {
   Engine, Scene, HemisphericLight, DirectionalLight, SpotLight,
-  Vector3, TransformNode, MeshBuilder, Mesh, StandardMaterial, Color3, Color4,
+  Vector3, Matrix, TransformNode, MeshBuilder, Mesh, StandardMaterial, Color3, Color4,
   DefaultRenderingPipeline, Texture, DynamicTexture, VolumetricLightScatteringPostProcess
 } from '@babylonjs/core';
 
@@ -1036,35 +1036,45 @@ export class CombatScene {
       if (!this._scene || !this._camera || !this._currentSceneryRoot) return;
       this.disposeVolumetricLight();
 
-      // Sun emitter — a bright sphere placed upper-right, behind the plateau,
-      // just above the frame top so its rays angle down-left into the scene.
-      // Camera at (0, 6.2, -17) with 25° FOV : (15, 16, 28) puts the sun
-      // disk at roughly screen (78%, 5%) — upper-right corner, with rays
-      // streaming down through the back-row enemies and the plateau.
+      // ─── HD-2D OFF-SCREEN SUN PATTERN ────────────────────────────────
+      // Industry-standard Octopath / Triangle Strategy god rays setup :
+      // the sun mesh itself sits JUST above the frame top so it never
+      // appears as a visible disk, but its projected screen position
+      // remains close enough to the viewport that VLSP scatter samples
+      // accumulate real contribution from the bright source pixels at
+      // the upper edge.
+      //
+      // Geometry derived for Normal mode camera at (0, 6.2, -24), tilt
+      // 10°, FOV 25°, aspect ~2.33 :
+      //   sun at (12, 8.3, 22) projects to screen (~77%, ~3%)
+      //   → just below the frame top edge
+      //   → ~85% of samples toward it stay on-screen
+      //   → produces visible diagonal warm rays cascading down-left
+      //
+      // Previous Lot 3.x position (15, 16, 28) projected to V_norm=1.70
+      // (70% ABOVE the frame top), so scatter samples mostly fell off-
+      // screen — zero contribution — hence invisible rays.
       const sun = MeshBuilder.CreateSphere(
           'sunEmitter',
-          { diameter: 5, segments: 16 },
+          { diameter: 6, segments: 16 },
           this._scene,
       );
-      sun.position.set(15, 16, 28);
+      sun.position.set(12, 8.3, 22);
       sun.parent = this._currentSceneryRoot;
       sun.isPickable = false;
       sun.renderingGroupId = 0;
+      sun.alwaysSelectAsActiveMesh = true;     // never frustum-cull the scatter source
 
       const sunMat = new StandardMaterial('sunEmitterMat', this._scene);
-      // HDR emissive : drives the scatter source brightness. Lot 3.0 used
-      // LDR (1.0, 0.92, 0.65) and the rays were invisible — the scatter
-      // post-process samples the rendered framebuffer at the sun's screen
-      // position, so the sun pixels need to be > 1.0 to push real intensity
-      // into the radial blur. (3.0, 2.8, 2.0) gives a strong warm-cream
-      // source without blowing out into pure white.
-      sunMat.emissiveColor = new Color3(3.0, 2.8, 2.0);
+      // HDR emissive (> 1.0) is required to push real intensity into the
+      // scatter radial blur. Warm cream-amber matches the HD-2D palette
+      // without blowing out into pure white.
+      sunMat.emissiveColor = new Color3(2.8, 2.5, 1.8);
       sunMat.diffuseColor = Color3.Black();
       sunMat.specularColor = Color3.Black();
       sunMat.disableLighting = true;
       sun.material = sunMat;
 
-      // The post-process. 100 samples = HD-2D quality (smooth rays, decent perf).
       const pp = new VolumetricLightScatteringPostProcess(
           'godRayScatter',
           1.0,                              // full-res scatter pass
@@ -1076,21 +1086,49 @@ export class CombatScene {
           false,                            // not reusable
       );
 
-      // HD-2D classique tuning — dramatic warm rays without being blown
-      // out. Lot 3.0 values (0.38 / 0.965 / 0.50 / 0.92) were too conserva-
-      // tive : the sun was visible but no rays emerged. These cranked
-      // values target the Octopath / Triangle Strategy aesthetic :
-      //   exposure : final brightness multiplier of the scatter contribution
-      //   decay    : per-step falloff along each ray (higher = longer rays)
-      //   weight   : per-sample contribution (intensity)
-      //   density  : how tightly samples pack near the sun (lower = wider rays)
-      pp.exposure = 1.00;   // was 0.38 — Lot 3.0 rays were invisible
-      pp.decay    = 0.970;  // was 0.965 — slightly longer rays
-      pp.weight   = 0.85;   // was 0.50  — stronger per-sample punch
-      pp.density  = 0.85;   // was 0.92  — wider spread, less concentrated
+      // SUBTLE HD-2D tuning — visible warm rays without dominating the
+      // frame. Tuned for an off-screen emitter where half of every ray's
+      // samples pass through the upper viewport edge :
+      //   exposure 0.85 — noticeable but not blown-out final contribution
+      //   decay 0.975   — long streaming rays (slow per-step falloff)
+      //   weight 0.70   — moderate per-sample intensity
+      //   density 0.88  — slight spread for atmospheric feel
+      pp.exposure = 0.85;
+      pp.decay    = 0.975;
+      pp.weight   = 0.70;
+      pp.density  = 0.88;
 
       this._sunEmitter = sun;
       this._godRayPP   = pp;
+
+      // ─── DIAGNOSTIC ─────────────────────────────────────────────────
+      // Verify the projection matches our theoretical calculation on the
+      // first render frame after setup. Logs once, then auto-disposes.
+      // Remove once the ray effect is locked in.
+      const diagObs = this._scene.onBeforeRenderObservable.addOnce(() => {
+          if (!this._sunEmitter || !this._camera?.babylonCamera || !this._engine) return;
+          const cam = this._camera.babylonCamera;
+          const w = this._engine.getRenderWidth();
+          const h = this._engine.getRenderHeight();
+          this._sunEmitter.computeWorldMatrix(true);
+          const projected = Vector3.Project(
+              this._sunEmitter.absolutePosition,
+              Matrix.Identity(),
+              this._scene.getTransformMatrix(),
+              cam.viewport.toGlobal(w, h),
+          );
+          const attachedCount = (cam as any)._postProcesses?.filter((p: any) => p).length ?? 0;
+          console.log('═══ [godRayScatter] HD-2D off-screen sun ═══');
+          console.log('  sun world      :', this._sunEmitter.absolutePosition.toString());
+          console.log('  cam world      :', cam.position.toString());
+          console.log('  cam FOV        :', ((cam.fov * 180) / Math.PI).toFixed(1) + '°');
+          console.log('  screen         :', `${w}×${h}`);
+          console.log('  sun → screen   :', `(${((projected.x / w) * 100).toFixed(1)}%, ${((projected.y / h) * 100).toFixed(1)}%)`);
+          console.log('  sun NDC depth  :', projected.z.toFixed(3));
+          console.log('  post-processes :', attachedCount);
+          console.log('══════════════════════════════════════════');
+      });
+      this._sceneryObservers.push(diagObs);
   }
 
   /**
