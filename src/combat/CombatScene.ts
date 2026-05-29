@@ -566,9 +566,18 @@ export class CombatScene {
         // in the upper-corner zone (where vignette attenuates) stays above
         // the bloom threshold for the warm halo to register.
         vignetteWeight  = 1.45;
-        dofFStop        = post.dofFStop;
+        // DOF aperture tightened (fStop 1.35 -> 4.5, lensSize 48 -> 28)
+        // so the bokeh blur on the god-rays at Z=18-23 (12-17 units past
+        // the grid focal plane) stays small enough to preserve the bright
+        // pillar peaks. With the previous 1.35 fStop the CoC was ~18mm,
+        // smearing each ray's brightness across a 48px kernel and dropping
+        // the peak by ~60% — crushing the bloom contribution to zero even
+        // after the Lot 2.9 threshold reduction. The shallow-dreamy DOF
+        // look is dialed back in Normal mode ; Focus mode keeps its 1.10
+        // fStop for the cinematic close-ups so attack drama is preserved.
+        dofFStop        = 4.5;
         dofFocalLength  = post.dofFocalLength;
-        dofLensSize     = post.dofLensSize;
+        dofLensSize     = 28;
         grain           = 4.5;
         // Bloom : threshold 0.46 (vs biome 0.70) ensures the bright cap
         // visible portion of every god-ray contributes ; weight 0.72
