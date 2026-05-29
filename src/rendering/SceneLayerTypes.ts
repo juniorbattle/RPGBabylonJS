@@ -5,6 +5,7 @@ export type SceneLayerAlphaKey = 'none' | 'texture' | 'white' | 'black' | 'lumin
 export type SceneLayerCameraMode = 'front' | 'overview';
 export type SceneLayerStageFit = 'full-stage' | 'lower-stage' | 'foreground-frame' | 'fx-overlay';
 export type SceneLayerWrapMode = 'clamp' | 'wrap';
+export type SceneLayerProceduralKind = 'godrays';
 
 export type SceneLayerCompositionRole =
     | 'backAtmosphere'
@@ -42,6 +43,7 @@ export interface SceneLayerAsset {
     scrollSpeedX?: number;
     scrollSpeedY?: number;
     wrapMode?: SceneLayerWrapMode;
+    proceduralTexture?: SceneLayerProceduralKind;
     uvScaleX?: number;
     uvScaleY?: number;
     uvOffsetX?: number;

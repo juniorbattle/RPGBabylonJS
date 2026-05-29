@@ -78,7 +78,7 @@ const FOREST_STAGE: CombatArtPreset = {
   ambient: {
     diffuse: new Color3(0.40, 0.50, 0.68),
     ground: new Color3(0.025, 0.055, 0.035),
-    intensity: 0.34,
+    intensity: 0.48,
   },
   sun: {
     direction: new Vector3(-0.8, -1.2, 0.6).normalize(),
@@ -89,7 +89,7 @@ const FOREST_STAGE: CombatArtPreset = {
   },
   post: {
     contrast: 1.14,
-    exposure: 0.88,
+    exposure: 0.98,
     bloomThreshold: 0.72,
     bloomWeight: 0.32,
     dofFStop: 1.35,

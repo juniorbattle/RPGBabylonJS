@@ -1,5 +1,6 @@
 import {
     Color3,
+    DynamicTexture,
     Engine,
     Mesh,
     MeshBuilder,
@@ -80,7 +81,7 @@ export class SceneLayerManager {
         this.mode = mode;
 
         const sorted = [...this.preset.layers]
-            .filter((layer) => layer.enabled !== false && !!layer.file)
+            .filter((layer) => layer.enabled !== false && (!!layer.file || !!layer.proceduralTexture))
             .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
         sorted.forEach((layer, index) => this.buildLayer(layer, index));
@@ -123,7 +124,7 @@ export class SceneLayerManager {
     }
 
     private buildLayer(cfg: SceneLayerAsset, index: number): void {
-        if (!cfg.file) return;
+        if (!cfg.file && !cfg.proceduralTexture) return;
 
         const planeW = this.mapW * cfg.widthScale;
         const planeH = cfg.height;
@@ -158,17 +159,24 @@ export class SceneLayerManager {
             mat.alphaMode = Engine.ALPHA_ADD;
         }
 
-        const tex = new Texture(
-            `/assets/backgrounds/${cfg.file}`,
-            this.scene,
-            false,
-            true,
-            Texture.BILINEAR_SAMPLINGMODE,
-            undefined,
-            () => console.warn(`SceneLayerManager: texture not found - ${cfg.file}`)
-        );
-        tex.hasAlpha = usesTextureAlpha;
-        tex.getAlphaFromRGB = alphaKey === 'black' || alphaKey === 'luminance';
+        let tex: Texture;
+        if (cfg.proceduralTexture === 'godrays') {
+            tex = this.generateGodRayTexture(safeId);
+            tex.hasAlpha = true;
+        } else {
+            const fileTex = new Texture(
+                `/assets/backgrounds/${cfg.file}`,
+                this.scene,
+                false,
+                true,
+                Texture.BILINEAR_SAMPLINGMODE,
+                undefined,
+                () => console.warn(`SceneLayerManager: texture not found - ${cfg.file}`)
+            );
+            fileTex.hasAlpha = usesTextureAlpha;
+            fileTex.getAlphaFromRGB = alphaKey === 'black' || alphaKey === 'luminance';
+            tex = fileTex;
+        }
         const wrap = cfg.wrapMode === 'wrap' ? Texture.WRAP_ADDRESSMODE : Texture.CLAMP_ADDRESSMODE;
         tex.wrapU = wrap;
         tex.wrapV = wrap;
@@ -192,6 +200,45 @@ export class SceneLayerManager {
         }
 
         this.layers.push({ id: safeId, cfg, mesh, mat, tex, observer, basePosition });
+    }
+
+    private generateGodRayTexture(id: string): DynamicTexture {
+        const size = 512;
+        const tex = new DynamicTexture(`godrayTex_${id}`, { width: size, height: size }, this.scene, false);
+        tex.hasAlpha = true;
+        const ctx = tex.getContext() as CanvasRenderingContext2D;
+        ctx.clearRect(0, 0, size, size);
+
+        const beams = 5;
+        const spacing = size / beams;
+        const halfW = spacing * 0.17;
+        const shear = size * 0.24;
+
+        ctx.save();
+        ctx.transform(1, 0, shear / size, 1, 0, 0);
+        for (let i = -2; i <= beams + 2; i++) {
+            const cx = (i + 0.5) * spacing;
+            const grad = ctx.createLinearGradient(cx - halfW, 0, cx + halfW, 0);
+            grad.addColorStop(0, 'rgba(255,236,180,0)');
+            grad.addColorStop(0.5, 'rgba(255,242,205,0.55)');
+            grad.addColorStop(1, 'rgba(255,236,180,0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(cx - halfW, -shear, halfW * 2, size + shear * 2);
+        }
+        ctx.restore();
+
+        ctx.globalCompositeOperation = 'destination-in';
+        const mask = ctx.createLinearGradient(0, 0, 0, size);
+        mask.addColorStop(0, 'rgba(0,0,0,0)');
+        mask.addColorStop(0.18, 'rgba(0,0,0,1)');
+        mask.addColorStop(0.7, 'rgba(0,0,0,0.5)');
+        mask.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = mask;
+        ctx.fillRect(0, 0, size, size);
+        ctx.globalCompositeOperation = 'source-over';
+
+        tex.update(false);
+        return tex;
     }
 
     private computePosition(cfg: SceneLayerAsset, planeH: number): Vector3 {
@@ -308,6 +355,7 @@ export class SceneLayerManager {
             scrollSpeedX: raw.scrollSpeedX ?? 0,
             scrollSpeedY: raw.scrollSpeedY ?? 0,
             wrapMode: raw.wrapMode,
+            proceduralTexture: raw.proceduralTexture,
             uvScaleX: raw.uvScaleX,
             uvScaleY: raw.uvScaleY,
             uvOffsetX: raw.uvOffsetX,

@@ -629,7 +629,7 @@ export class CombatGrid {
     mat.backFaceCulling = false;
     mat.specularColor = new Color3(0, 0, 0);
     mat.emissiveColor = new Color3(1, 1, 1);
-    mat.alpha = 0.30;
+    mat.alpha = 0.42;
     mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
     mat.zOffset = -2;
 
@@ -674,7 +674,7 @@ export class CombatGrid {
       textureSize * 0.16,
       textureSize * 0.78
     );
-    warmLight.addColorStop(0, 'rgba(255,221,140,0.34)');
+    warmLight.addColorStop(0, 'rgba(255,221,140,0.24)');
     warmLight.addColorStop(0.36, 'rgba(196,177,92,0.14)');
     warmLight.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = warmLight;
@@ -808,13 +808,13 @@ export class CombatGrid {
 
     for (let x = 0; x <= width; x++) {
       const px = x * cellW;
-      ctx.strokeStyle = 'rgba(255,255,210,0.075)';
+      ctx.strokeStyle = 'rgba(255,255,210,0.13)';
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       ctx.moveTo(px, 0);
       ctx.lineTo(px, textureSize);
       ctx.stroke();
-      ctx.strokeStyle = 'rgba(15,30,18,0.10)';
+      ctx.strokeStyle = 'rgba(15,30,18,0.20)';
       ctx.lineWidth = 2.0;
       ctx.beginPath();
       ctx.moveTo(px + 1.5, 0);
@@ -824,13 +824,13 @@ export class CombatGrid {
 
     for (let z = 0; z <= depth; z++) {
       const py = z * cellH;
-      ctx.strokeStyle = 'rgba(255,255,210,0.070)';
+      ctx.strokeStyle = 'rgba(255,255,210,0.12)';
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       ctx.moveTo(0, py);
       ctx.lineTo(textureSize, py);
       ctx.stroke();
-      ctx.strokeStyle = 'rgba(15,30,18,0.09)';
+      ctx.strokeStyle = 'rgba(15,30,18,0.18)';
       ctx.lineWidth = 2.0;
       ctx.beginPath();
       ctx.moveTo(0, py + 1.5);
