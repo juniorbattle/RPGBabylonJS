@@ -998,35 +998,44 @@ export class CombatScene {
       mat.disableDepthWrite = true;
       mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
 
-      // Six shafts placed BEHIND the plateau (Z=18..24) so they read as
-      // atmospheric depth in the frontal Focus/Normal frames instead of
-      // sitting on top of the combatants. Heights bumped to 42 so each
-      // beam spans from above the camera frame down to the ground haze.
-      // Two "hero" beams (idx 0 & 3) carry the bulk of the glow ; the
-      // four secondaries add variation and depth.
+      // Seven shafts placed BEHIND the plateau (Z=18..23) so they read as
+      // atmospheric depth in the frontal Focus/Normal frames. Heights kept
+      // SHORT (24) and Y_center LOW (5..8) so the brightest band of the
+      // vertical gradient (top of texture, alpha 0.92) actually sits inside
+      // the camera frustum — the previous Y=16, h=42 layout pushed the
+      // bright cap to world Y~37 (well above the Normal-mode frame top
+      // ~Y=10 at Z=20), so only the dim tail was visible and got crushed
+      // by the deep teal fog.
+      //
+      // Two "hero" beams (idx 0 & 3) carry the bulk of the glow ; the rest
+      // are secondaries that thicken the haze. One mid-stage filler at
+      // Z=13 catches the back row of combatants in Focus close-ups.
       //
       // All beams share a consistent roll toward the sun source (the sun
       // light travels (-0.8,-1.2,+0.6), so the source sits camera-upper-
       // right ; we lean the tops to +X by ~14° to read as "coming from
       // the sun"). Slight yaw variation keeps them from looking stamped.
       const shafts: Array<{ x: number; y: number; z: number; w: number; yaw: number; roll: number; alpha: number; hero: boolean }> = [
-          { x:  2, y: 16, z: 19, w: 1.8, yaw:  10, roll: -14, alpha: 0.32, hero: true  },
-          { x:  5, y: 16, z: 22, w: 1.0, yaw:  -6, roll: -12, alpha: 0.16, hero: false },
-          { x:  8, y: 17, z: 24, w: 1.3, yaw:   4, roll: -15, alpha: 0.20, hero: false },
-          { x: 11, y: 16, z: 19, w: 2.0, yaw:  -8, roll: -13, alpha: 0.34, hero: true  },
-          { x: 14, y: 17, z: 23, w: 1.1, yaw:   8, roll: -14, alpha: 0.18, hero: false },
-          { x: 17, y: 16, z: 20, w: 1.2, yaw:  -4, roll: -12, alpha: 0.17, hero: false },
+          { x:  2, y: 5, z: 18, w: 1.8, yaw:  10, roll: -14, alpha: 0.55, hero: true  },
+          { x:  5, y: 6, z: 21, w: 1.0, yaw:  -6, roll: -12, alpha: 0.30, hero: false },
+          { x:  8, y: 7, z: 23, w: 1.3, yaw:   4, roll: -15, alpha: 0.36, hero: false },
+          { x: 11, y: 5, z: 18, w: 2.0, yaw:  -8, roll: -13, alpha: 0.62, hero: true  },
+          { x: 14, y: 7, z: 22, w: 1.1, yaw:   8, roll: -14, alpha: 0.32, hero: false },
+          { x: 17, y: 6, z: 19, w: 1.2, yaw:  -4, roll: -12, alpha: 0.30, hero: false },
+          { x:  9, y: 8, z: 13, w: 0.8, yaw:  12, roll: -16, alpha: 0.22, hero: false },
       ];
 
       shafts.forEach((s, i) => {
           const shaftMat = mat.clone(`godRayMat_${i}`);
           shaftMat.alpha = s.alpha;
-          // Hero beams get a slightly warmer, brighter emissive so they
-          // bloom harder while the secondaries stay subtle.
+          // Hero beams get a noticeably warmer, brighter emissive so they
+          // bloom harder ; secondaries are still warm but more subtle.
           if (s.hero) {
-              shaftMat.emissiveColor = new Color3(1.00, 0.86, 0.55);
+              shaftMat.emissiveColor = new Color3(1.22, 1.02, 0.62);
+          } else {
+              shaftMat.emissiveColor = new Color3(1.05, 0.88, 0.52);
           }
-          const plane = MeshBuilder.CreatePlane(`godRay_${i}`, { width: s.w, height: 42 }, this._scene);
+          const plane = MeshBuilder.CreatePlane(`godRay_${i}`, { width: s.w, height: 24 }, this._scene);
           plane.material = shaftMat;
           plane.parent = root;
           plane.position.set(s.x, s.y, s.z);
