@@ -922,31 +922,42 @@ export class CombatScene {
       mat.disableDepthWrite = true;
       mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
 
-      // Five shafts spanning the plateau width. More variation in width and
-      // softer alphas now that the texture itself fades, so the silhouettes
-      // are slimmer light beams instead of solid pillars.
-      const shafts: Array<{ x: number; z: number; w: number; tilt: number; alpha: number }> = [
-          { x:  0, z: 13, w: 1.4, tilt:  5, alpha: 0.18 },
-          { x:  5, z: 14, w: 0.9, tilt: -3, alpha: 0.14 },
-          { x:  9, z: 13, w: 1.6, tilt:  6, alpha: 0.22 },
-          { x: 13, z: 14, w: 0.9, tilt: -4, alpha: 0.13 },
-          { x: 17, z: 13, w: 1.2, tilt:  4, alpha: 0.17 },
+      // Six shafts placed BEHIND the plateau (Z=18..24) so they read as
+      // atmospheric depth in the frontal Focus/Normal frames instead of
+      // sitting on top of the combatants. Heights bumped to 42 so each
+      // beam spans from above the camera frame down to the ground haze.
+      // Two "hero" beams (idx 0 & 3) carry the bulk of the glow ; the
+      // four secondaries add variation and depth.
+      //
+      // All beams share a consistent roll toward the sun source (the sun
+      // light travels (-0.8,-1.2,+0.6), so the source sits camera-upper-
+      // right ; we lean the tops to +X by ~14° to read as "coming from
+      // the sun"). Slight yaw variation keeps them from looking stamped.
+      const shafts: Array<{ x: number; y: number; z: number; w: number; yaw: number; roll: number; alpha: number; hero: boolean }> = [
+          { x:  2, y: 16, z: 19, w: 1.8, yaw:  10, roll: -14, alpha: 0.32, hero: true  },
+          { x:  5, y: 16, z: 22, w: 1.0, yaw:  -6, roll: -12, alpha: 0.16, hero: false },
+          { x:  8, y: 17, z: 24, w: 1.3, yaw:   4, roll: -15, alpha: 0.20, hero: false },
+          { x: 11, y: 16, z: 19, w: 2.0, yaw:  -8, roll: -13, alpha: 0.34, hero: true  },
+          { x: 14, y: 17, z: 23, w: 1.1, yaw:   8, roll: -14, alpha: 0.18, hero: false },
+          { x: 17, y: 16, z: 20, w: 1.2, yaw:  -4, roll: -12, alpha: 0.17, hero: false },
       ];
 
       shafts.forEach((s, i) => {
           const shaftMat = mat.clone(`godRayMat_${i}`);
           shaftMat.alpha = s.alpha;
-          const plane = MeshBuilder.CreatePlane(`godRay_${i}`, { width: s.w, height: 32 }, this._scene);
+          // Hero beams get a slightly warmer, brighter emissive so they
+          // bloom harder while the secondaries stay subtle.
+          if (s.hero) {
+              shaftMat.emissiveColor = new Color3(1.00, 0.86, 0.55);
+          }
+          const plane = MeshBuilder.CreatePlane(`godRay_${i}`, { width: s.w, height: 42 }, this._scene);
           plane.material = shaftMat;
           plane.parent = root;
-          plane.position.set(s.x, 14, s.z);
-          // Slight outward tilt + sun-leaning angle. Y rotation alternates
-          // so the shafts spread visually instead of all facing the camera
-          // flat.
+          plane.position.set(s.x, s.y, s.z);
           plane.rotation.set(
-              (12 * Math.PI) / 180,                          // pitch slightly forward
-              ((i % 2 === 0 ? 16 : -16) * Math.PI) / 180,    // alternating yaw for variety
-              (s.tilt * Math.PI) / 180,                      // roll
+              (10 * Math.PI) / 180,           // pitch slightly forward
+              (s.yaw * Math.PI) / 180,        // yaw for slight spread
+              (s.roll * Math.PI) / 180,       // consistent lean toward sun
           );
           plane.isPickable = false;
           plane.renderingGroupId = 0;
