@@ -375,49 +375,58 @@ export class CombatScene {
    * disposes them in one sweep.
    */
   private setupLighting(preset: CombatArtPreset): void {
-    // 1. AMBIENT — kept low (×1.15) so shadows stay dramatic. The previous
-    // ×1.6 was crushing the contrast and making the scene read as flat.
+    // HD-2D 3-point lighting tuned for the frontal Focus/Normal cameras :
+    // crushed ambient + warm key + saturated teal back-rim + tight hero
+    // spot. Gives clean directional shadow on the plateau, luminous edges
+    // on every 3D prop, and a sharp stage pool on the combatants.
+
+    // 1. AMBIENT — dropped to ×0.85 so the unlit side of props actually
+    //    goes dark. The previous ×1.15 was lifting everything and reading
+    //    as overcast on the frontal angle.
     const amb = new HemisphericLight('ambCombat', new Vector3(0, 1, 0), this._scene);
     amb.diffuse = preset.ambient.diffuse;
     amb.groundColor = preset.ambient.ground;
-    amb.intensity = preset.ambient.intensity * 1.15;
+    amb.intensity = preset.ambient.intensity * 0.85;
 
-    // 2. SUN — warm directional key light. Boost upped to ×1.55 so the
-    // diffuse colour really lands and the bloom has something to bite into.
+    // 2. SUN — warm directional key. Intensity kept at ×1.55, but specular
+    //    scaled down so the warm highlights stay matte-cinematic instead of
+    //    going plastic-shiny on rocks and the plateau.
     const sun = new DirectionalLight('sunCombat', preset.sun.direction, this._scene);
     sun.diffuse = preset.sun.diffuse;
-    sun.specular = preset.sun.specular;
+    sun.specular = preset.sun.specular.scale(0.65);
     sun.intensity = preset.sun.intensity * 1.55;
     sun.position = preset.sun.position;
 
-    // 3. RIM-LIGHT — teal-magical back-light. Direction = roughly opposite
-    // of the sun on the XZ plane so the back of every prop / sprite catches
-    // a luminous teal edge. Saturated jade colour and bumped intensity for
-    // a more "moonlight through canopy" feel.
+    // 3. RIM-LIGHT — saturated jade back-light. Direction made noticeably
+    //    more horizontal (Y -0.10 vs the old -0.30) so it grazes the SIDES
+    //    of props instead of their tops — the classic moonlight-through-
+    //    canopy edge glow. Colour pushed and intensity bumped to 1.40 so
+    //    it survives the deep fog and reads from the frontal camera.
     const rim = new DirectionalLight(
       'rimCombat',
-      new Vector3(0.4, -0.3, -1.0).normalize(),
+      new Vector3(0.55, -0.10, -1.0).normalize(),
       this._scene
     );
-    rim.diffuse = new Color3(0.22, 0.62, 0.58);   // saturated jade
-    rim.specular = new Color3(0.14, 0.42, 0.40);
-    rim.intensity = 0.85;
+    rim.diffuse = new Color3(0.30, 0.78, 0.72);
+    rim.specular = new Color3(0.18, 0.52, 0.48);
+    rim.intensity = 1.40;
 
-    // 4. HERO SPOTLIGHT — tighter, hotter warm cone over the plateau. The
-    // previous 70° cone leaked all over the back row ; 55° keeps the spot
-    // pool right around the combatants for that JRPG "stage light" feel.
+    // 4. HERO SPOTLIGHT — tighter (~47° cone) and hotter so the stage pool
+    //    sits right around the combatants instead of bleeding into the
+    //    back row. Position lowered (Y 26 → 22) to tighten the falloff
+    //    radius on the plateau without making the cone harsh.
     const heroSpot = new SpotLight(
       'heroSpotCombat',
-      new Vector3(8, 26, 6),                  // above the plateau center, slightly higher
-      new Vector3(0, -1, 0),                  // straight down
-      Math.PI / 3.2,                          // ~55° cone (was ~70°)
-      8,                                      // exponent up — sharper falloff
+      new Vector3(8, 22, 6),
+      new Vector3(0, -1, 0),
+      Math.PI / 3.8,
+      8,
       this._scene
     );
-    heroSpot.diffuse = new Color3(1.0, 0.88, 0.66);    // warmer amber
-    heroSpot.specular = new Color3(0.55, 0.50, 0.38);
-    heroSpot.intensity = 1.55;                          // hotter pool
-    heroSpot.range = 32;
+    heroSpot.diffuse = new Color3(1.0, 0.86, 0.62);
+    heroSpot.specular = new Color3(0.45, 0.40, 0.32);
+    heroSpot.intensity = 1.80;
+    heroSpot.range = 30;
   }
 
   private setupPostProcessing(preset: CombatArtPreset): void {
