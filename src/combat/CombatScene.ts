@@ -1022,6 +1022,11 @@ export class CombatScene {
    * shader cost.
    */
   private buildGodRays(): void {
+      // DIAG Lot 2.11 : confirm function is called and parent root is valid.
+      console.log('[buildGodRays] called', {
+          sceneryRoot: this._currentSceneryRoot?.name,
+          sceneryRootDisposed: this._currentSceneryRoot?.isDisposed?.(),
+      });
       if (!this._currentSceneryRoot) return;
 
       const root = new TransformNode('godRaysRoot', this._scene);
@@ -1079,14 +1084,19 @@ export class CombatScene {
           { x:  9, y: 3, z: 13, w: 1.2, yaw:  12, roll: -16, alpha: 0.36, hero: false },
       ];
 
+      // DIAGNOSTIC Lot 2.11 — push heroes to extreme brightness to verify
+      // the rays are rendering at all. If the upper frame still shows zero
+      // warm pillars at emissive (4, 3, 1.5) + alpha 0.99, we have a
+      // fundamental rendering bug (mesh culling, wrong parent, depth-test
+      // issue, etc.) not a post-FX issue. Dial back after confirmation.
       shafts.forEach((s, i) => {
           const shaftMat = mat.clone(`godRayMat_${i}`);
-          shaftMat.alpha = s.alpha;
+          shaftMat.alpha = s.hero ? 0.99 : s.alpha;
           // Hero beams get a saturated warm emissive that punches above the
           // bloom threshold (0.58) — bright enough to register as a true
           // pillar of light. Secondaries stay warm but a notch softer.
           if (s.hero) {
-              shaftMat.emissiveColor = new Color3(1.55, 1.25, 0.72);
+              shaftMat.emissiveColor = new Color3(4.0, 3.0, 1.5); // DIAG : 2.5x normal
           } else {
               shaftMat.emissiveColor = new Color3(1.18, 0.98, 0.58);
           }
@@ -1102,6 +1112,20 @@ export class CombatScene {
           plane.isPickable = false;
           plane.renderingGroupId = 0;
           plane.alwaysSelectAsActiveMesh = true;
+          // DIAG Lot 2.11 : log first ray creation to verify the function is
+          // actually called and the plane is parented + positioned correctly.
+          if (i === 0 || s.hero) {
+              console.log(`[godRay #${i}]`, {
+                  pos: `(${s.x}, ${s.y}, ${s.z})`,
+                  w: s.w,
+                  hero: s.hero,
+                  matAlpha: shaftMat.alpha,
+                  emissive: shaftMat.emissiveColor.toString(),
+                  rootParent: root.parent?.name,
+                  meshVisible: plane.isVisible,
+                  meshEnabled: plane.isEnabled(),
+              });
+          }
       });
 
       mat.dispose();  // base mat is no longer needed (we cloned per-shaft).
