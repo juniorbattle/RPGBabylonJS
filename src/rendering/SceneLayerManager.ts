@@ -189,13 +189,33 @@ export class SceneLayerManager {
         mat.useAlphaFromDiffuseTexture = usesTextureAlpha;
         mesh.material = mat;
 
+        if (cfg.cameraAnchored) {
+            mesh.billboardMode = TransformNode.BILLBOARDMODE_ALL;
+            mesh.infiniteDistance = false;
+            mesh.alwaysSelectAsActiveMesh = true;
+        }
+
         let observer: Observer<Scene> | null = null;
-        if (cfg.scrollSpeedX || cfg.scrollSpeedY) {
+        const anchorDistance = cfg.zOffset && cfg.zOffset > 0 ? cfg.zOffset : 4;
+        if (cfg.scrollSpeedX || cfg.scrollSpeedY || cfg.cameraAnchored) {
             observer = this.scene.onBeforeRenderObservable.add(() => {
                 if (mesh.isDisposed()) return;
                 const dt = this.scene.getEngine().getDeltaTime() / 1000;
                 if (cfg.scrollSpeedX) tex.uOffset += cfg.scrollSpeedX * dt;
                 if (cfg.scrollSpeedY) tex.vOffset += cfg.scrollSpeedY * dt;
+                if (cfg.cameraAnchored) {
+                    const cam = this.scene.activeCamera;
+                    if (!cam) return;
+                    const engine = this.scene.getEngine();
+                    const aspect = engine.getRenderWidth() / Math.max(1, engine.getRenderHeight());
+                    const forward = cam.getDirection(Vector3.Forward());
+                    mesh.setAbsolutePosition(cam.globalPosition.add(forward.scale(anchorDistance)));
+                    const halfH = anchorDistance * Math.tan(cam.fov / 2);
+                    const halfW = halfH * aspect;
+                    const overscan = 1.18;
+                    mesh.scaling.x = (2 * halfW * overscan) / planeW;
+                    mesh.scaling.y = (2 * halfH * overscan) / planeH;
+                }
             });
         }
 
@@ -209,19 +229,21 @@ export class SceneLayerManager {
         const ctx = tex.getContext() as CanvasRenderingContext2D;
         ctx.clearRect(0, 0, size, size);
 
-        const beams = 5;
+        const beams = 6;
         const spacing = size / beams;
-        const halfW = spacing * 0.17;
-        const shear = size * 0.24;
+        const shear = size * 0.5;
+        const intensities = [0.85, 0.6, 1.0, 0.7, 0.9, 0.58];
 
         ctx.save();
         ctx.transform(1, 0, shear / size, 1, 0, 0);
         for (let i = -2; i <= beams + 2; i++) {
+            const peak = intensities[((i % beams) + beams) % beams];
+            const halfW = spacing * (0.12 + 0.06 * peak);
             const cx = (i + 0.5) * spacing;
             const grad = ctx.createLinearGradient(cx - halfW, 0, cx + halfW, 0);
-            grad.addColorStop(0, 'rgba(255,236,180,0)');
-            grad.addColorStop(0.5, 'rgba(255,242,205,0.55)');
-            grad.addColorStop(1, 'rgba(255,236,180,0)');
+            grad.addColorStop(0, 'rgba(255,238,196,0)');
+            grad.addColorStop(0.5, `rgba(255,244,212,${peak})`);
+            grad.addColorStop(1, 'rgba(255,238,196,0)');
             ctx.fillStyle = grad;
             ctx.fillRect(cx - halfW, -shear, halfW * 2, size + shear * 2);
         }
@@ -229,10 +251,9 @@ export class SceneLayerManager {
 
         ctx.globalCompositeOperation = 'destination-in';
         const mask = ctx.createLinearGradient(0, 0, 0, size);
-        mask.addColorStop(0, 'rgba(0,0,0,0)');
-        mask.addColorStop(0.18, 'rgba(0,0,0,1)');
-        mask.addColorStop(0.7, 'rgba(0,0,0,0.5)');
-        mask.addColorStop(1, 'rgba(0,0,0,0)');
+        mask.addColorStop(0, 'rgba(0,0,0,1)');
+        mask.addColorStop(0.5, 'rgba(0,0,0,0.9)');
+        mask.addColorStop(1, 'rgba(0,0,0,0.55)');
         ctx.fillStyle = mask;
         ctx.fillRect(0, 0, size, size);
         ctx.globalCompositeOperation = 'source-over';
@@ -356,6 +377,7 @@ export class SceneLayerManager {
             scrollSpeedY: raw.scrollSpeedY ?? 0,
             wrapMode: raw.wrapMode,
             proceduralTexture: raw.proceduralTexture,
+            cameraAnchored: raw.cameraAnchored,
             uvScaleX: raw.uvScaleX,
             uvScaleY: raw.uvScaleY,
             uvOffsetX: raw.uvOffsetX,

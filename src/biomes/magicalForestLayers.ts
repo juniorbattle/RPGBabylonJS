@@ -76,6 +76,7 @@ export const magicalForestLayerPreset: SceneLayerPreset = aliasByRole({
     layers: [
         layer('back_atmosphere', 'Back atmosphere', 0, 'fx_forest_mist_alpha.png', {
             opacity: 0.32,
+            billboard: true,
             blendMode: 'additive',
             emissive: [1.2, 0.85, 0.5],
             yOffset: -6.5,
@@ -89,6 +90,7 @@ export const magicalForestLayerPreset: SceneLayerPreset = aliasByRole({
         }, 'backAtmosphere'),
         layer('main_midground', 'Main midground', 10, 'mid_forest_v3_alpha.png', {
             opacity: 1,
+            billboard: true,
             yOffset: -7.8,
             zOffset: 27,
             widthScale: 4.75,
@@ -111,6 +113,7 @@ export const magicalForestLayerPreset: SceneLayerPreset = aliasByRole({
         }, 'groundBlend'),
         layer('foreground_corners', 'Foreground corners', 30, 'fore_forest_v3_alpha.png', {
             opacity: 0.58,
+            billboard: true,
             yOffset: -8.8,
             zOffset: -5.5,
             widthScale: 4.95,
@@ -122,6 +125,7 @@ export const magicalForestLayerPreset: SceneLayerPreset = aliasByRole({
         }, 'foregroundCorners'),
         layer('upper_canopy', 'Upper canopy', 40, 'fore_forest_trunks_alpha.png', {
             opacity: 0.34,
+            billboard: true,
             yOffset: 8.5,
             zOffset: -3,
             widthScale: 4.4,
@@ -133,6 +137,7 @@ export const magicalForestLayerPreset: SceneLayerPreset = aliasByRole({
         }, 'upperCanopy'),
         layer('fx_overlay', 'FX overlay', 50, 'fx_forest_mist_alpha.png', {
             opacity: 0.22,
+            billboard: true,
             blendMode: 'additive',
             emissive: [1.4, 1.0, 0.55],
             yOffset: -8.4,
@@ -148,19 +153,19 @@ export const magicalForestLayerPreset: SceneLayerPreset = aliasByRole({
             uvScaleX: 1.5,
             wrapMode: 'wrap',
         }, 'fxOverlay'),
-        layer('god_rays', 'God rays', 25, null, {
+        layer('god_rays', 'God rays', 60, null, {
             proceduralTexture: 'godrays',
-            opacity: 0.45,
+            cameraAnchored: true,
+            opacity: 0.9,
             blendMode: 'additive',
-            emissive: [1.0, 0.92, 0.66],
-            yOffset: -3,
-            zOffset: 12,
-            widthScale: 4.6,
-            height: 44,
-            cameraOpacity: { front: 0.5, overview: 0.3 },
-            parallaxStrength: 0.05,
-            stageFit: 'fx-overlay',
-            scrollSpeedX: 0.008,
+            emissive: [1.2, 1.05, 0.74],
+            renderGroup: 1,
+            zOffset: 3,
+            widthScale: 1,
+            height: 10,
+            cameraOpacity: { front: 0.9, overview: 0.9 },
+            parallaxStrength: 0,
+            scrollSpeedX: 0.01,
             wrapMode: 'wrap',
         }),
     ],

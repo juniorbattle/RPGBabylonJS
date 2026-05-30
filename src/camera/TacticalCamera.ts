@@ -72,6 +72,7 @@ export class TacticalCamera {
   private mapCenterZ:   number  = 0;
 
   private currentMode: CameraMode = CameraMode.Normal;
+  public onModeChanged: ((mode: CameraMode) => void) | null = null;
   private followTarget: Vector3 | null = null;
   private followEnabled: boolean = true;
   private transitioning: boolean = false;
@@ -133,6 +134,7 @@ export class TacticalCamera {
   async setNormalMode(): Promise<void> {
     this.followEnabled = true;
     this.currentMode   = CameraMode.Normal;
+    this.onModeChanged?.(CameraMode.Normal);
     
     if (!this.followTarget) return Promise.resolve();
 
@@ -150,6 +152,7 @@ export class TacticalCamera {
   async setOverviewMode(): Promise<void> {
     this.followEnabled = false;
     this.currentMode   = CameraMode.Overview;
+    this.onModeChanged?.(CameraMode.Overview);
 
     const overviewRotation = this.config.overviewRotationX;
     const tiltRad = (overviewRotation * Math.PI) / 180;
@@ -171,6 +174,7 @@ export class TacticalCamera {
   async setFocusMode(): Promise<void> {
     this.followEnabled = true;
     this.currentMode   = CameraMode.Focus;
+    this.onModeChanged?.(CameraMode.Focus);
 
     if (!this.followTarget) return Promise.resolve();
 

@@ -15,7 +15,7 @@ import { CombatManager }                                   from './CombatManager
 import { CombatArtPreset, FloorConfig, SkyColors, SunConfig, getCombatArtPreset } from './CombatArtPresets';
 import { SceneLayerManager, SCENE_LAYER_PRESETS } from '../rendering/SceneLayerManager';
 import type { SceneGroundLayerConfig, SceneLayerInput } from '../rendering/SceneLayerTypes';
-import { TacticalCamera }                                  from '../camera/TacticalCamera';
+import { TacticalCamera, CameraMode }                                  from '../camera/TacticalCamera';
 import { ClanManager }                                     from '../data/ClanManager';
 import { GameManager }                                     from '../data/GameManager';
 import { DataManager }                                     from '../data/DataManager';
@@ -157,6 +157,9 @@ export class CombatScene {
     await this.buildDioramaScenery(gridW * 2, gridD * 2, biome, customMapData, artPreset);
 
     this._camera = new TacticalCamera(this._scene);
+    this._camera.onModeChanged = (mode) => {
+      this._layerManager?.applyCameraMode(mode === CameraMode.Overview ? 'overview' : 'front');
+    };
     this._scene.activeCamera = this._camera.babylonCamera; 
     
     // Set up Tilt-Shift & HD-2D Post Processing
@@ -359,7 +362,7 @@ export class CombatScene {
     this._renderingPipeline.imageProcessing.contrast = preset.post.contrast;
     this._renderingPipeline.imageProcessing.exposure = preset.post.exposure;
     this._renderingPipeline.imageProcessing.vignetteEnabled = true;
-    this._renderingPipeline.imageProcessing.vignetteWeight = 1.25;
+    this._renderingPipeline.imageProcessing.vignetteWeight = 1.12;
     this._renderingPipeline.imageProcessing.vignetteStretch = 0.62;
     this._renderingPipeline.imageProcessing.vignetteColor = new Color4(0.012, 0.026, 0.016, 1.0);
 
@@ -422,7 +425,7 @@ export class CombatScene {
       this._renderingPipeline.imageProcessing.exposure = enabled
           ? Math.max(0.72, post.exposure * 0.92)
           : post.exposure;
-      this._renderingPipeline.imageProcessing.vignetteWeight = enabled ? 1.5 : 1.25;
+      this._renderingPipeline.imageProcessing.vignetteWeight = enabled ? 1.5 : 1.12;
 
       this._renderingPipeline.bloomThreshold = enabled
           ? Math.max(0.46, post.bloomThreshold - 0.12)

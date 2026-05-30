@@ -44,6 +44,7 @@ export interface SceneLayerAsset {
     scrollSpeedY?: number;
     wrapMode?: SceneLayerWrapMode;
     proceduralTexture?: SceneLayerProceduralKind;
+    cameraAnchored?: boolean;
     uvScaleX?: number;
     uvScaleY?: number;
     uvOffsetX?: number;

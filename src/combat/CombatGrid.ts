@@ -549,7 +549,7 @@ export class CombatGrid {
         }
         // FaceColor to slightly darken the sides artificially compared to the top
         const palette = this.getBiomePalette(this.config.biome ?? 'forest', this.config.floorConfig);
-        const sideFaceAlpha = flat ? 0.55 : 0.75;
+        const sideFaceAlpha = flat ? 0.72 : 0.75;
         const topFaceAlpha = flat ? 0.95 : 1;
         const sideFace = new Color4(palette.side.r, palette.side.g, palette.side.b, sideFaceAlpha);
         const topFace = new Color4(1, 1, 1, topFaceAlpha);
@@ -629,7 +629,7 @@ export class CombatGrid {
     mat.backFaceCulling = false;
     mat.specularColor = new Color3(0, 0, 0);
     mat.emissiveColor = new Color3(1, 1, 1);
-    mat.alpha = 0.42;
+    mat.alpha = 0.30;
     mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
     mat.zOffset = -2;
 
@@ -770,7 +770,7 @@ export class CombatGrid {
     }
 
     ctx.globalCompositeOperation = 'multiply';
-    for (let i = 0; i < 34; i++) {
+    for (let i = 0; i < 18; i++) {
       const x = rng() * textureSize;
       const y = rng() * textureSize;
       const rx = 40 + rng() * 150;
@@ -778,7 +778,7 @@ export class CombatGrid {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate((rng() - 0.5) * 1.2);
-      ctx.fillStyle = `rgba(${28 + Math.floor(rng() * 26)},${47 + Math.floor(rng() * 35)},${18 + Math.floor(rng() * 18)},${0.035 + rng() * 0.06})`;
+      ctx.fillStyle = `rgba(${28 + Math.floor(rng() * 26)},${47 + Math.floor(rng() * 35)},${18 + Math.floor(rng() * 18)},${0.02 + rng() * 0.035})`;
       ctx.beginPath();
       ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
       ctx.fill();
